@@ -23,6 +23,7 @@ public:
 private:
 	ros::NodeHandle n;
 	ros::Publisher cmd_pub;
+	ros::Publisher path_pub;
 	ros::Subscriber rectangle_sub;
 	void rectangleCB(const walk_in_rectangle::Rectangle& rectangle);
 };
@@ -34,13 +35,16 @@ Walk_in_rectangle::Walk_in_rectangle()
 
 	rectangle_sub=n.subscribe("/rectangle", 1, &Walk_in_rectangle::rectangleCB, this);
 	cmd_pub=n.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
+	path_pub=n.advertise<nav_msgs::Path>("/path", 10);
 }
-void Walk_in_rectangle::rectangleCB(const  walk_in_rectangle::Rectangle& rectangle)
+void Walk_in_rectangle::rectangleCB(const walk_in_rectangle::Rectangle& rectangle)
 {
 	double x_dist=fabs(rectangle.U_L.x-rectangle.U_R.x);
 	double y_dist=fabs(rectangle.U_L.y-rectangle.D_L.y);
-	int row=floor(x_dist);
-	int col=floor(y_dist);
+	//ROS_INFO("x_dist:%.2f,y_dist:%.2f",x_dist,y_dist);
+	int col=floor(x_dist/rcd);//列
+	int row=floor(y_dist/rcd);//行
+	//ROS_INFO("col:%d,row:%d",col,row);
 	nav_msgs::Path path;
 	path.poses.resize((col+1)*(row+1));
 	path.header.frame_id="/map";
@@ -65,9 +69,10 @@ void Walk_in_rectangle::rectangleCB(const  walk_in_rectangle::Rectangle& rectang
 					}
 					if(r==row+1)
 					{
-						path_point.pose.position.y=rectangle.U_L.y-(rcd/2)+rcd*r;
+						path_point.pose.position.y=rectangle.D_L.y+(rcd/2);
 					}
 				}
+				//ROS_INFO("col:%d,row:%d,x:%.2f,y:%.2f",c,r,path_point.pose.position.x,path_point.pose.position.y);
 			}
 			else
 			{//为奇数行 1 3 5 正序压栈
@@ -81,21 +86,21 @@ void Walk_in_rectangle::rectangleCB(const  walk_in_rectangle::Rectangle& rectang
 					}
 					if(r==row+1)
 					{
-						path_point.pose.position.y=rectangle.D_L.y-(rcd/2);
+						path_point.pose.position.y=rectangle.D_L.y+(rcd/2);
 					}
 				}
+				//ROS_INFO("col:%d,row:%d,x:%.2f,y:%.2f",c,r,path_point.pose.position.x,path_point.pose.position.y);
 			}
 			path.poses.push_back(path_point);
 		}
 	}
-
-
+	path_pub.publish(path);
 }
 
 int main(int argc, char *argv[])
 {
 	ros::init(argc, argv, "Walk_in_rectangle");
-	Walk_in_rectangle walk_a_walk();
+	Walk_in_rectangle walk_a_walk;
 	ros::spin();
     return 0;
 }

@@ -1,0 +1,10 @@
+<launch>
+
+    <include file="$(find stage)/launch/stage.launch"/>
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find stage)/rviz/map.rviz"/>
+    <node name="map_server" pkg="map_server" type="map_server" args="$(find stage)/maps/corridor.yaml"/>
+    <node pkg="tf" type="static_transform_publisher" name="odom2map" args="0 0 0 0 0 0  /odom /map   10"/>
+
+    <node pkg="walk_in_rectangle" type="walk_in_rectangle_pub" name="wir_test" output="screen"/>
+    <node pkg="walk_in_rectangle" type="rectangle_pub" name="rect_pub_test"/>
+</launch>
