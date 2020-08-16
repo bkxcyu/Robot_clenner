@@ -25,11 +25,11 @@ RectanglePub::RectanglePub()
 {
     rect_pub=n.advertise<walk_in_rectangle::Rectangle>("/rectangle", 10);
     timer = n.createTimer(ros::Duration((1.0)/10), &RectanglePub::testpub_loopCB, this);
-    rect.U_L.x=0;       rect.U_R.x=20;
-    rect.U_L.y=0;       rect.U_R.y=0;
+    rect.U_L.x=0;       rect.U_R.x=25;
+    rect.U_L.y=6;       rect.U_R.y=6;
     
-    rect.D_L.x=0;       rect.D_R.x=20;
-    rect.D_L.y=-10;     rect.D_R.y=-10;
+    rect.D_L.x=0;       rect.D_R.x=25;
+    rect.D_L.y=0;       rect.D_R.y=0;
     
     
 }

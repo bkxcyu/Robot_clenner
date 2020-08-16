@@ -23,9 +23,9 @@ interval_sim 100  # simulation timestep in milliseconds
 window
 (
   size [ 1327 744 ]
-  center [ 9.487 6.972 ]
-  rotate [ 2.000 -3.500 ]
-  scale 25.446
+  center [ 8.812 5.075 ]
+  rotate [ 0.000 -1.500 ]
+  scale 30.790
 )
 
 floorplan
@@ -33,13 +33,13 @@ floorplan
   name "corridor"
   bitmap "../maps/corridor.png"
   size [ 25.000 6.000 2.000 ]
-  pose [ 0.000 0.000 0.000 0.000 ]
+  pose [ 12.500 3.000 0.000 0.000 ]
 )
 
 # throw in a robot
 myrobot
 (
-  pose [ -11.826 2.368 0.000 0.000 ]
+  pose [ 0.000 0.000 0.000 0.000 ]
   name "turtlebot"
 )
 
