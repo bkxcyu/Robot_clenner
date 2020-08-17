@@ -68,7 +68,7 @@ SPAWM_RECTANGLE::SPAWM_RECTANGLE()
 	pn.param("start_pose_y", start_pose_y, 1.0);
 	pn.param("map_data_origion_x", map_data_origion_x, 0.0);
 	pn.param("map_data_origion_y", map_data_origion_y, 0.0);
-	pn.param("step", step, 0.1);
+	pn.param("step", step, 0.2);
 	ROS_INFO("\n rcd:%.1f,start_pose_x:%.1f,start_pose_y:%.1f,step:%.2f \n",rcd,start_pose_x,start_pose_y,step);
 
 	map_receive_flag=false;
@@ -297,70 +297,197 @@ void SPAWM_RECTANGLE::spawm_loopCB(const ros::TimerEvent&)
 		//scan peaks
 		if(scan_up||scan_left)
 		{
-			up_left_peak.position.x-=rcd*step;
-			up_left_peak.position.y+=rcd*step;
-			if(get_Occupancy(up_left_peak.position)>0)
+			if(scan_up_left)
 			{
-				scan_up_left=false;
-				ROS_WARN("touch up left boundary ");
+				up_left_peak.position.x-=rcd*step;
+				up_left_peak.position.y+=rcd*step;
+				if(get_Occupancy(up_left_peak.position)>0)
+				{
+					scan_up_left=false;
+					ROS_WARN("-touch up left boundary ");
+				}
+				else
+				{
+					last_edges.poses.push_back(up_left_peak);
+					edges.poses.push_back(up_left_peak);
+				}
 			}
-			else
+			else if(scan_up)
 			{
-				last_edges.poses.push_back(up_left_peak);
-				edges.poses.push_back(up_left_peak);
+				up_left_peak.position.y+=rcd*step;
+				if(get_Occupancy(up_left_peak.position)>0)
+				{
+					scan_up=false;
+					ROS_WARN("-touch up boundary ");
+				}
+				else
+				{
+					last_edges.poses.push_back(up_left_peak);
+					edges.poses.push_back(up_left_peak);
+				}
+			}
+			else if(scan_left)
+			{
+				up_left_peak.position.x-=rcd*step;
+				if(get_Occupancy(up_left_peak.position)>0)
+				{
+					scan_left=false;
+					ROS_WARN("-touch left boundary ");
+				}
+				else
+				{
+					last_edges.poses.push_back(up_left_peak);
+					edges.poses.push_back(up_left_peak);
+				}
 			}
 		}
 		else
 			edges.poses.push_back(up_left_peak);
+
 		if(scan_up||scan_right)
 		{
-			up_right_peak.position.x+=rcd*step;
-			up_right_peak.position.y+=rcd*step;
-			if(get_Occupancy(up_right_peak.position)>0)
+			if(scan_up_right)
 			{
-				scan_up_right=false;
-				ROS_WARN("touch up right boundary ");
+				up_right_peak.position.x+=rcd*step;
+				up_right_peak.position.y+=rcd*step;
+				if(get_Occupancy(up_right_peak.position)>0)
+				{
+					scan_up_right=false;
+					ROS_WARN("touch up right boundary ");
+				}
+				else
+				{
+					last_edges.poses.push_back(up_right_peak);
+					edges.poses.push_back(up_right_peak);
+				}
 			}
-			else
+			else if(scan_up)
 			{
-				last_edges.poses.push_back(up_right_peak);
-				edges.poses.push_back(up_right_peak);
+				up_right_peak.position.y+=rcd*step;
+				if(get_Occupancy(up_right_peak.position)>0)
+				{
+					scan_up=false;
+					ROS_WARN("-touch up boundary ");
+				}
+				else
+				{
+					last_edges.poses.push_back(up_right_peak);
+					edges.poses.push_back(up_right_peak);
+				}
 			}
+			else if(scan_right)
+			{
+				up_right_peak.position.x+=rcd*step;
+				if(get_Occupancy(up_right_peak.position)>0)
+				{
+					scan_right=false;
+					ROS_WARN("-touch  right boundary ");
+				}
+				else
+				{
+					last_edges.poses.push_back(up_right_peak);
+					edges.poses.push_back(up_right_peak);
+				}
+			}
+
 		}
 		else
 			edges.poses.push_back(up_right_peak);
 
 		if(scan_down||scan_left)
 		{
-			down_left_peak.position.x-=rcd*step;
-			down_left_peak.position.y-=rcd*step;
-			if(get_Occupancy(down_left_peak.position)>0)
+			if(scan_down_left)
 			{
-				scan_down_left=false;
-				ROS_WARN("touch down left boundary ");
+				down_left_peak.position.x-=rcd*step;
+				down_left_peak.position.y-=rcd*step;
+				if(get_Occupancy(down_left_peak.position)>0)
+				{
+					scan_down_left=false;
+					ROS_WARN("-touch down left boundary ");
+				}
+				else
+				{
+					last_edges.poses.push_back(down_left_peak);
+					edges.poses.push_back(down_left_peak);
+				}
 			}
-			else
+			else if(scan_down)
 			{
-				last_edges.poses.push_back(down_left_peak);
-				edges.poses.push_back(down_left_peak);
+				down_left_peak.position.y-=rcd*step;
+				if(get_Occupancy(down_left_peak.position)>0)
+				{
+					scan_down=false;
+					ROS_WARN("-touch down boundary ");
+				}
+				else
+				{
+					last_edges.poses.push_back(down_left_peak);
+					edges.poses.push_back(down_left_peak);
+				}
+			}
+			else if(scan_left)
+			{
+				down_left_peak.position.x-=rcd*step;
+				if(get_Occupancy(down_left_peak.position)>0)
+				{
+					scan_left=false;
+					ROS_WARN("-touch left boundary ");
+				}
+				else
+				{
+					last_edges.poses.push_back(down_left_peak);
+					edges.poses.push_back(down_left_peak);
+				}
 			}
 		}
 		else
 			edges.poses.push_back(down_left_peak);
 		if(scan_down||scan_right)
 		{
-			down_right_peak.position.x+=rcd*step;
-			down_right_peak.position.y-=rcd*step;
-			if(get_Occupancy(down_right_peak.position)>0)
+			if(scan_down_right)
 			{
-				scan_down_right=false;
-				ROS_WARN("touch down right boundary ");
+				down_right_peak.position.x+=rcd*step;
+				down_right_peak.position.y-=rcd*step;
+				if(get_Occupancy(down_right_peak.position)>0)
+				{
+					scan_down_right=false;
+					ROS_WARN("-touch down right boundary ");
+				}
+				else
+				{
+					last_edges.poses.push_back(down_right_peak);
+					edges.poses.push_back(down_right_peak);
+				}
 			}
-			else
+			else if(scan_down)
 			{
-				last_edges.poses.push_back(down_right_peak);
-				edges.poses.push_back(down_right_peak);
+				down_right_peak.position.y-=rcd*step;
+				if(get_Occupancy(down_right_peak.position)>0)
+				{
+					scan_down=false;
+					ROS_WARN("-touch down boundary ");
+				}
+				else
+				{
+					last_edges.poses.push_back(down_right_peak);
+					edges.poses.push_back(down_right_peak);
+				}
 			}
+			else if(scan_right)
+			{
+				down_right_peak.position.x+=rcd*step;
+				if(get_Occupancy(down_right_peak.position)>0)
+				{
+					scan_right=false;
+					ROS_WARN("-touch right boundary ");
+				}
+				else
+				{
+					last_edges.poses.push_back(down_right_peak);
+					edges.poses.push_back(down_right_peak);
+				}
+			}
+
 		}
 		else
 			edges.poses.push_back(down_right_peak);
@@ -368,12 +495,23 @@ void SPAWM_RECTANGLE::spawm_loopCB(const ros::TimerEvent&)
 		//check boundary
 			//check up boundary
 		geometry_msgs::PoseArray up_edge=get_poses_between_peaks(up_left_peak,up_right_peak);
-		for(geometry_msgs::Pose each_edge_pose:up_edge.poses)
+		if(scan_up)
 		{
-			if(get_Occupancy(each_edge_pose)>0)
+			for(geometry_msgs::Pose each_edge_pose:up_edge.poses)
 			{
-				scan_up=false;
-				ROS_WARN("touch up boundary ");
+				if(get_Occupancy(each_edge_pose)>0)
+				{
+					scan_up=false;
+					scan_up_left=false;
+					scan_up_right=false;
+					//ROS_INFO("boundary:%.2f,%.2f",each_edge_pose.position.x,each_edge_pose.position.y);
+				}
+			}
+			if(!scan_up)
+			{
+				up_left_peak.position.y-=rcd*step;
+				up_right_peak.position.y-=rcd*step;
+				ROS_WARN("touch up boundary");
 			}
 		}
 		if(scan_up)
@@ -382,11 +520,21 @@ void SPAWM_RECTANGLE::spawm_loopCB(const ros::TimerEvent&)
 		}
 			//check left boundary
 		geometry_msgs::PoseArray left_edge=get_poses_between_peaks(up_left_peak,down_left_peak);
-		for(geometry_msgs::Pose each_edge_pose:left_edge.poses)
+		if(scan_left)
 		{
-			if(get_Occupancy(each_edge_pose)>0)
+			for(geometry_msgs::Pose each_edge_pose:left_edge.poses)
 			{
-				scan_left=false;
+				if(get_Occupancy(each_edge_pose)>0)
+				{
+					scan_left=false;
+					scan_up_left=false;
+					scan_down_left=false;
+				}
+			}
+			if(!scan_left)
+			{
+				up_left_peak.position.x+=rcd*step;
+				down_left_peak.position.x+=rcd*step;
 				ROS_WARN("touch left boundary ");
 			}
 		}
@@ -396,12 +544,22 @@ void SPAWM_RECTANGLE::spawm_loopCB(const ros::TimerEvent&)
 		}
 			//check dowm boundary
 		geometry_msgs::PoseArray down_edge=get_poses_between_peaks(down_right_peak,down_left_peak);
-		for(geometry_msgs::Pose each_edge_pose:down_edge.poses)
+		if(scan_down)
 		{
-			if(get_Occupancy(each_edge_pose)>0)
+			for(geometry_msgs::Pose each_edge_pose:down_edge.poses)
 			{
-				scan_down=false;
-				ROS_WARN("touch down boundary ");
+				if(get_Occupancy(each_edge_pose)>0)
+				{
+					scan_down=false;
+					scan_down_left=false;
+					scan_down_right=false;
+				}
+			}
+			if(!scan_down)
+			{
+				down_right_peak.position.y+=rcd*step;
+				down_left_peak.position.y+=rcd*step;		
+				ROS_WARN("touch down boundary ");		
 			}
 		}
 		if(scan_down)
@@ -409,13 +567,24 @@ void SPAWM_RECTANGLE::spawm_loopCB(const ros::TimerEvent&)
 			edges.poses.insert(edges.poses.end(),down_edge.poses.begin(),down_edge.poses.end());
 		}
 			//check right boundary
-		geometry_msgs::PoseArray right_edge=get_poses_between_peaks(down_right_peak,up_right_peak);
-		for(geometry_msgs::Pose each_edge_pose:down_edge.poses)
+		geometry_msgs::PoseArray right_edge=get_poses_between_peaks(up_right_peak,down_right_peak);
+		if(scan_right)
 		{
-			if(get_Occupancy(each_edge_pose)>0)
+			for(geometry_msgs::Pose each_edge_pose:right_edge.poses)
 			{
-				scan_right=false;
-				ROS_WARN("touch right boundary ");
+				if(get_Occupancy(each_edge_pose)>0)
+				{
+					scan_right=false;
+					scan_down_right=false;
+					scan_up_right=false;
+					//ROS_INFO("right boundary:%.2f,%.2f",each_edge_pose.position.x,each_edge_pose.position.y);
+				}
+			}
+			if(!scan_right)
+			{
+				down_right_peak.position.x-=rcd*step;
+				up_right_peak.position.x-=rcd*step;		
+				ROS_WARN("touch right boundary");	
 			}
 		}
 		if(scan_right)
@@ -445,7 +614,7 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::get_poses_between_peaks(geometry_msgs:
 		//compare y
 		if(peak1.position.y>peak2.position.y)
 		{
-			for(float y=peak2.position.y;y<peak1.position.y;y+=step*rcd)
+			for(float y=peak2.position.y+step*rcd;y<peak1.position.y-step*rcd;y+=step*rcd)
 			{
 				geometry_msgs::Pose pose_;
 				pose_.position.x=peak1.position.x;
@@ -456,7 +625,7 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::get_poses_between_peaks(geometry_msgs:
 		}
 		else
 		{
-			for(float y=peak2.position.y;y>peak1.position.y;y-=step*rcd)
+			for(float y=peak2.position.y-step*rcd;y>peak1.position.y+step*rcd;y-=step*rcd)
 			{
 				geometry_msgs::Pose pose_;
 				pose_.position.x=peak1.position.x;
@@ -472,7 +641,7 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::get_poses_between_peaks(geometry_msgs:
 		//compare x
 		if(peak1.position.x>peak2.position.x)
 		{
-			for(float x=peak2.position.x;x<peak1.position.x;x+=step*rcd)
+			for(float x=peak2.position.x+step*rcd;x<peak1.position.x-step*rcd;x+=step*rcd)
 			{
 				geometry_msgs::Pose pose_;
 				pose_.position.x=x;
@@ -483,7 +652,7 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::get_poses_between_peaks(geometry_msgs:
 		}
 		else
 		{
-			for(float x=peak2.position.x;x>peak1.position.x;x-=step*rcd)
+			for(float x=peak2.position.x-step*rcd;x>peak1.position.x+step*rcd;x-=step*rcd)
 			{
 				geometry_msgs::Pose pose_;
 				pose_.position.x=x;
