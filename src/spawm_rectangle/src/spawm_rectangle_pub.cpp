@@ -11,6 +11,7 @@
 #include <nav_msgs/OccupancyGrid.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <visualization_msgs/Marker.h>
+#include "walk_in_rectangle/Rectangle.h"
 
 class SPAWM_RECTANGLE
 {
@@ -24,7 +25,7 @@ public:
 private:
     ros::NodeHandle n;
 	nav_msgs::OccupancyGrid map_;
-	bool map_receive_flag;
+
 	ros::Publisher rect_pub,marker_pub;
     ros::Timer timer;
     void testpub_loopCB(const ros::TimerEvent&);
@@ -35,19 +36,24 @@ private:
 	int8_t get_Occupancy(const geometry_msgs::Pose& pose);
 	int8_t get_Occupancy(const float& x,const float& y);
 	void init_marker();
-	void init_spawm();
 	visualization_msgs::Marker points, line_strip, goal_circle;
 	void draw_marker(const geometry_msgs::Point& position);
 	void draw_marker(const geometry_msgs::Pose& pose);
 	void draw_marker(const geometry_msgs::PoseArray& pose_array);
-	geometry_msgs::PoseArray spawm();
+	void draw_marker(const walk_in_rectangle::Rectangle& rect_);
+	geometry_msgs::PoseArray expand_rectangle(const double& start_x_,const double& start_y_);
 	geometry_msgs::PoseArray get_poses_between_peaks(geometry_msgs::Pose& peak1,geometry_msgs::Pose& peak2);
+	void save_rect( geometry_msgs::PoseArray& rect_pose_array);
 
 	geometry_msgs::Pose up_left_peak;
 	geometry_msgs::Pose up_right_peak;
 	geometry_msgs::Pose down_left_peak;
 	geometry_msgs::Pose down_right_peak;
 	geometry_msgs::PoseArray edges;
+	geometry_msgs::PoseArray left_gateway,right_gateway,up_gateway,down_gateway;
+	geometry_msgs::PoseArray first_rect,second_rect;
+	std::vector<walk_in_rectangle::Rectangle> rectangle_array;
+	bool map_receive_flag=false;
 	bool scan_up_left=true;
 	bool scan_down_left=true;
 	bool scan_up_right=true;
@@ -56,8 +62,11 @@ private:
 	bool scan_down=true;
 	bool scan_left=true;
 	bool scan_right=true;
+	bool rect_init_flag=false;
+	bool first_prepare_flag=true;
 	double step;
 
+	enum STATUS {PREPARE,PROCESS,DONE} status;
 };
 
 SPAWM_RECTANGLE::SPAWM_RECTANGLE()
@@ -71,12 +80,10 @@ SPAWM_RECTANGLE::SPAWM_RECTANGLE()
 	pn.param("step", step, 0.2);
 	ROS_INFO("\n rcd:%.1f,start_pose_x:%.1f,start_pose_y:%.1f,step:%.2f \n",rcd,start_pose_x,start_pose_y,step);
 
-	map_receive_flag=false;
-
 	map_sub=n.subscribe("/map", 1, &SPAWM_RECTANGLE::mapCB, this);//nav_msgs/OccupancyGrid
 	marker_pub = n.advertise<visualization_msgs::Marker>("/Marker", 10);
 
-	init_spawm();
+	status=PREPARE;
 	timer = n.createTimer(ros::Duration((1.0)/20), &SPAWM_RECTANGLE::spawm_loopCB, this);
 	//timer = n.createTimer(ros::Duration((1.0)/0.5), &SPAWM_RECTANGLE::testpub_loopCB, this);
 
@@ -108,8 +115,8 @@ void SPAWM_RECTANGLE::init_marker()
 	line_strip.type = visualization_msgs::Marker::LINE_STRIP;
 	goal_circle.type = visualization_msgs::Marker::CYLINDER;
 	// POINTS markers use x and y scale for width/height respectively
-	points.scale.x = 0.2;
-	points.scale.y = 0.2;
+	points.scale.x = 0.1;
+	points.scale.y = 0.1;
 
 	//LINE_STRIP markers use only the x component of scale, for the line width
 	line_strip.scale.x = 0.1;
@@ -260,6 +267,17 @@ void SPAWM_RECTANGLE::draw_marker(const geometry_msgs::PoseArray& pose_array)
 	}
 	marker_pub.publish(points);
 }
+void SPAWM_RECTANGLE::draw_marker(const walk_in_rectangle::Rectangle& rect_)
+{
+	line_strip.points.clear();
+	line_strip.points.push_back(rect_.U_R);
+	line_strip.points.push_back(rect_.D_R);
+	line_strip.points.push_back(rect_.D_L);
+	line_strip.points.push_back(rect_.U_L);
+	line_strip.points.push_back(rect_.U_R);
+
+	marker_pub.publish(line_strip);
+}
 void SPAWM_RECTANGLE::testpub_loopCB(const ros::TimerEvent&)
 {
     // geometry_msgs::Point test_point;//25*6
@@ -274,328 +292,86 @@ void SPAWM_RECTANGLE::testpub_loopCB(const ros::TimerEvent&)
 	// }
 	// points.points.clear();
 }
-void SPAWM_RECTANGLE::init_spawm()
-{	
-	up_left_peak.position.x=start_pose_x;
-	up_left_peak.position.y=start_pose_y;
-	up_right_peak.position.x=start_pose_x;
-	up_right_peak.position.y=start_pose_y;
-	down_left_peak.position.x=start_pose_x;
-	down_left_peak.position.y=start_pose_y;
-	down_right_peak.position.x=start_pose_x;
-	down_right_peak.position.y=start_pose_y;
-
-	edges.poses.push_back(up_left_peak);
-
-}
 void SPAWM_RECTANGLE::spawm_loopCB(const ros::TimerEvent&)
 {
 	if(map_receive_flag)
 	{
-		geometry_msgs::PoseArray last_edges=edges;
-		edges.poses.clear();
-		//scan peaks
-		if(scan_up||scan_left)
+		if(status==PREPARE)
 		{
-			if(scan_up_left)
+			if(first_prepare_flag)
 			{
-				up_left_peak.position.x-=rcd*step;
-				up_left_peak.position.y+=rcd*step;
-				if(get_Occupancy(up_left_peak.position)>0)
-				{
-					scan_up_left=false;
-					ROS_WARN("-touch up left boundary ");
-				}
-				else
-				{
-					last_edges.poses.push_back(up_left_peak);
-					edges.poses.push_back(up_left_peak);
-				}
-			}
-			else if(scan_up)
-			{
-				up_left_peak.position.y+=rcd*step;
-				if(get_Occupancy(up_left_peak.position)>0)
-				{
-					scan_up=false;
-					ROS_WARN("-touch up boundary ");
-				}
-				else
-				{
-					last_edges.poses.push_back(up_left_peak);
-					edges.poses.push_back(up_left_peak);
-				}
-			}
-			else if(scan_left)
-			{
-				up_left_peak.position.x-=rcd*step;
-				if(get_Occupancy(up_left_peak.position)>0)
-				{
-					scan_left=false;
-					ROS_WARN("-touch left boundary ");
-				}
-				else
-				{
-					last_edges.poses.push_back(up_left_peak);
-					edges.poses.push_back(up_left_peak);
-				}
-			}
-		}
-		else
-			edges.poses.push_back(up_left_peak);
 
-		if(scan_up||scan_right)
-		{
-			if(scan_up_right)
-			{
-				up_right_peak.position.x+=rcd*step;
-				up_right_peak.position.y+=rcd*step;
-				if(get_Occupancy(up_right_peak.position)>0)
-				{
-					scan_up_right=false;
-					ROS_WARN("touch up right boundary ");
-				}
-				else
-				{
-					last_edges.poses.push_back(up_right_peak);
-					edges.poses.push_back(up_right_peak);
-				}
+				status=PROCESS;
+				first_prepare_flag=false;
 			}
-			else if(scan_up)
+			else
 			{
-				up_right_peak.position.y+=rcd*step;
-				if(get_Occupancy(up_right_peak.position)>0)
-				{
-					scan_up=false;
-					ROS_WARN("-touch up boundary ");
-				}
-				else
-				{
-					last_edges.poses.push_back(up_right_peak);
-					edges.poses.push_back(up_right_peak);
-				}
-			}
-			else if(scan_right)
-			{
-				up_right_peak.position.x+=rcd*step;
-				if(get_Occupancy(up_right_peak.position)>0)
-				{
-					scan_right=false;
-					ROS_WARN("-touch  right boundary ");
-				}
-				else
-				{
-					last_edges.poses.push_back(up_right_peak);
-					edges.poses.push_back(up_right_peak);
-				}
-			}
+				//get edge && set edge occupied
 
-		}
-		else
-			edges.poses.push_back(up_right_peak);
+				//get rectangle
 
-		if(scan_down||scan_left)
-		{
-			if(scan_down_left)
-			{
-				down_left_peak.position.x-=rcd*step;
-				down_left_peak.position.y-=rcd*step;
-				if(get_Occupancy(down_left_peak.position)>0)
-				{
-					scan_down_left=false;
-					ROS_WARN("-touch down left boundary ");
-				}
-				else
-				{
-					last_edges.poses.push_back(down_left_peak);
-					edges.poses.push_back(down_left_peak);
-				}
-			}
-			else if(scan_down)
-			{
-				down_left_peak.position.y-=rcd*step;
-				if(get_Occupancy(down_left_peak.position)>0)
-				{
-					scan_down=false;
-					ROS_WARN("-touch down boundary ");
-				}
-				else
-				{
-					last_edges.poses.push_back(down_left_peak);
-					edges.poses.push_back(down_left_peak);
-				}
-			}
-			else if(scan_left)
-			{
-				down_left_peak.position.x-=rcd*step;
-				if(get_Occupancy(down_left_peak.position)>0)
-				{
-					scan_left=false;
-					ROS_WARN("-touch left boundary ");
-				}
-				else
-				{
-					last_edges.poses.push_back(down_left_peak);
-					edges.poses.push_back(down_left_peak);
-				}
-			}
-		}
-		else
-			edges.poses.push_back(down_left_peak);
-		if(scan_down||scan_right)
-		{
-			if(scan_down_right)
-			{
-				down_right_peak.position.x+=rcd*step;
-				down_right_peak.position.y-=rcd*step;
-				if(get_Occupancy(down_right_peak.position)>0)
-				{
-					scan_down_right=false;
-					ROS_WARN("-touch down right boundary ");
-				}
-				else
-				{
-					last_edges.poses.push_back(down_right_peak);
-					edges.poses.push_back(down_right_peak);
-				}
-			}
-			else if(scan_down)
-			{
-				down_right_peak.position.y-=rcd*step;
-				if(get_Occupancy(down_right_peak.position)>0)
-				{
-					scan_down=false;
-					ROS_WARN("-touch down boundary ");
-				}
-				else
-				{
-					last_edges.poses.push_back(down_right_peak);
-					edges.poses.push_back(down_right_peak);
-				}
-			}
-			else if(scan_right)
-			{
-				down_right_peak.position.x+=rcd*step;
-				if(get_Occupancy(down_right_peak.position)>0)
-				{
-					scan_right=false;
-					ROS_WARN("-touch right boundary ");
-				}
-				else
-				{
-					last_edges.poses.push_back(down_right_peak);
-					edges.poses.push_back(down_right_peak);
-				}
-			}
+				//stash new seed list
 
-		}
-		else
-			edges.poses.push_back(down_right_peak);
+				//get next seed from stack button && erease it from stack && check if occupied
 
-		//check boundary
-			//check up boundary
-		geometry_msgs::PoseArray up_edge=get_poses_between_peaks(up_left_peak,up_right_peak);
-		if(scan_up)
-		{
-			for(geometry_msgs::Pose each_edge_pose:up_edge.poses)
-			{
-				if(get_Occupancy(each_edge_pose)>0)
-				{
-					scan_up=false;
-					scan_up_left=false;
-					scan_up_right=false;
-					//ROS_INFO("boundary:%.2f,%.2f",each_edge_pose.position.x,each_edge_pose.position.y);
-				}
-			}
-			if(!scan_up)
-			{
-				up_left_peak.position.y-=rcd*step;
-				up_right_peak.position.y-=rcd*step;
-				ROS_WARN("touch up boundary");
+				//set status to process
+				status=PROCESS;
 			}
 		}
-		if(scan_up)
+		else if(status==PROCESS)
 		{
-			edges.poses.insert(edges.poses.end(),up_edge.poses.begin(),up_edge.poses.end());
+			//check if finished
+			//if(finished)
+			//{
+				//set status to prepare
+				status=PREPARE;
+			//}
+			//else
+			//{
+				//expand rectangle
+			//}
 		}
-			//check left boundary
-		geometry_msgs::PoseArray left_edge=get_poses_between_peaks(up_left_peak,down_left_peak);
-		if(scan_left)
+		else if(status==DONE)
 		{
-			for(geometry_msgs::Pose each_edge_pose:left_edge.poses)
-			{
-				if(get_Occupancy(each_edge_pose)>0)
-				{
-					scan_left=false;
-					scan_up_left=false;
-					scan_down_left=false;
-				}
-			}
-			if(!scan_left)
-			{
-				up_left_peak.position.x+=rcd*step;
-				down_left_peak.position.x+=rcd*step;
-				ROS_WARN("touch left boundary ");
-			}
-		}
-		if(scan_left)
-		{
-			edges.poses.insert(edges.poses.end(),left_edge.poses.begin(),left_edge.poses.end());
-		}
-			//check dowm boundary
-		geometry_msgs::PoseArray down_edge=get_poses_between_peaks(down_right_peak,down_left_peak);
-		if(scan_down)
-		{
-			for(geometry_msgs::Pose each_edge_pose:down_edge.poses)
-			{
-				if(get_Occupancy(each_edge_pose)>0)
-				{
-					scan_down=false;
-					scan_down_left=false;
-					scan_down_right=false;
-				}
-			}
-			if(!scan_down)
-			{
-				down_right_peak.position.y+=rcd*step;
-				down_left_peak.position.y+=rcd*step;		
-				ROS_WARN("touch down boundary ");		
-			}
-		}
-		if(scan_down)
-		{
-			edges.poses.insert(edges.poses.end(),down_edge.poses.begin(),down_edge.poses.end());
-		}
-			//check right boundary
-		geometry_msgs::PoseArray right_edge=get_poses_between_peaks(up_right_peak,down_right_peak);
-		if(scan_right)
-		{
-			for(geometry_msgs::Pose each_edge_pose:right_edge.poses)
-			{
-				if(get_Occupancy(each_edge_pose)>0)
-				{
-					scan_right=false;
-					scan_down_right=false;
-					scan_up_right=false;
-					//ROS_INFO("right boundary:%.2f,%.2f",each_edge_pose.position.x,each_edge_pose.position.y);
-				}
-			}
-			if(!scan_right)
-			{
-				down_right_peak.position.x-=rcd*step;
-				up_right_peak.position.x-=rcd*step;		
-				ROS_WARN("touch right boundary");	
-			}
-		}
-		if(scan_right)
-		{
-			edges.poses.insert(edges.poses.end(),right_edge.poses.begin(),right_edge.poses.end());
+			//do nothing
 		}
 
+		if(first_rect.header.seq==0)//expanding
+			first_rect=expand_rectangle(start_pose_x,start_pose_y);
+		else if(first_rect.header.seq==1)//save first rectangle to rectangle_array
+		{
+			save_rect(first_rect);
+			first_rect.header.seq=-1;
+		}
 
-		points.points.clear();
-		draw_marker(edges);
+		// for(geometry_msgs::Pose each_edge_pose:first_rect.poses)
+		// {
+		// 	draw_marker(each_edge_pose);
+		// 	//second_rect
+		// 	if(second_rect.header.seq==0)//expanding
+		// 		second_rect=expand_rectangle(each_edge_pose.position.x,each_edge_pose.position.y);
+		// 	else if(second_rect.header.seq==1)//save first rectangle to rectangle_array
+		// 	{
+		// 		save_rect(second_rect);
+		// 		second_rect.header.seq=-1;
+		// 	}
+		// }
+
+			
+			
 	}
+}
+void SPAWM_RECTANGLE::save_rect(geometry_msgs::PoseArray& rect_pose_array)
+{
+	walk_in_rectangle::Rectangle rect_;
+	rect_.U_R=rect_pose_array.poses.back().position;	rect_pose_array.poses.pop_back();
+	rect_.D_R=rect_pose_array.poses.back().position;	rect_pose_array.poses.pop_back();
+	rect_.D_L=rect_pose_array.poses.back().position;	rect_pose_array.poses.pop_back();
+	rect_.U_L=rect_pose_array.poses.back().position;	rect_pose_array.poses.pop_back();
+	ROS_INFO("\n rect_.U_R:[%.2f,%.2f]\n rect_.D_R:[%.2f,%.2f]\n rect_.D_L:[%.2f,%.2f]\n rect_.U_L:[%.2f,%.2f]",
+					rect_.U_R.x,rect_.U_R.y,rect_.D_R.x,rect_.D_R.y,rect_.D_L.x,rect_.D_L.y,rect_.U_L.x,rect_.U_L.y);
+	rectangle_array.push_back(rect_);
+	draw_marker(rect_);
 }
 
 geometry_msgs::PoseArray SPAWM_RECTANGLE::get_poses_between_peaks(geometry_msgs::Pose& peak1,geometry_msgs::Pose& peak2)
@@ -666,135 +442,390 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::get_poses_between_peaks(geometry_msgs:
 	return edge;
 }
 
-geometry_msgs::PoseArray SPAWM_RECTANGLE::spawm()
+geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x_,const double& start_y_)
 {  
-	//geometry_msgs::Pose up_left_peak;
-	// geometry_msgs::Pose up_right_peak;
-	// geometry_msgs::Pose down_left_peak;
-	// geometry_msgs::Pose down_right_peak;
+	if(!rect_init_flag)
+	{
+		up_left_peak.position.x=start_x_;
+		up_left_peak.position.y=start_y_;
+		up_right_peak.position.x=start_x_;
+		up_right_peak.position.y=start_y_;
+		down_left_peak.position.x=start_x_;
+		down_left_peak.position.y=start_y_;
+		down_right_peak.position.x=start_x_;
+		down_right_peak.position.y=start_y_;
 
-	// up_left_peak.position.x=start_pose_x;
-	// up_left_peak.position.y=start_pose_y;
-	// up_right_peak.position.x=start_pose_x;
-	// up_right_peak.position.y=start_pose_y;
-	// down_left_peak.position.x=start_pose_x;
-	// down_left_peak.position.y=start_pose_y;
-	// down_right_peak.position.x=start_pose_x;
-	// down_right_peak.position.y=start_pose_y;
+		edges.poses.push_back(up_left_peak);
+		rect_init_flag=true;
+		ROS_INFO("init new rect expand");
+	}
+	geometry_msgs::PoseArray gateway_and_peaks;
+	//geometry_msgs::PoseArray last_edges=edges;
+	edges.poses.clear();
+	//scan peaks
+	if(scan_up||scan_left)
+	{
+		if(scan_up_left)
+		{
+			up_left_peak.position.x-=rcd*step;
+			up_left_peak.position.y+=rcd*step;
+			if(get_Occupancy(up_left_peak.position)>0)
+			{
+				scan_up_left=false;
+				ROS_WARN("-touch up left boundary ");
+			}
+			else
+			{
+				//last_edges.poses.push_back(up_left_peak);
+				edges.poses.push_back(up_left_peak);
+			}
+		}
+		else if(scan_up)
+		{
+			up_left_peak.position.y+=rcd*step;
+			if(get_Occupancy(up_left_peak.position)>0)
+			{
+				scan_up=false;
+				ROS_WARN("-touch up boundary ");
+			}
+			else
+			{
+				//last_edges.poses.push_back(up_left_peak);
+				edges.poses.push_back(up_left_peak);
+			}
+		}
+		else if(scan_left)
+		{
+			up_left_peak.position.x-=rcd*step;
+			if(get_Occupancy(up_left_peak.position)>0)
+			{
+				scan_left=false;
+				ROS_WARN("-touch left boundary ");
+			}
+			else
+			{
+				//last_edges.poses.push_back(up_left_peak);
+				edges.poses.push_back(up_left_peak);
+			}
+		}
+	}
+	else
+		edges.poses.push_back(up_left_peak);
 
-	// geometry_msgs::PoseArray edges;
-	// edges.poses.push_back(up_left_peak);
+	if(scan_up||scan_right)
+	{
+		if(scan_up_right)
+		{
+			up_right_peak.position.x+=rcd*step;
+			up_right_peak.position.y+=rcd*step;
+			if(get_Occupancy(up_right_peak.position)>0)
+			{
+				scan_up_right=false;
+				ROS_WARN("touch up right boundary ");
+			}
+			else
+			{
+				//last_edges.poses.push_back(up_right_peak);
+				edges.poses.push_back(up_right_peak);
+			}
+		}
+		else if(scan_up)
+		{
+			up_right_peak.position.y+=rcd*step;
+			if(get_Occupancy(up_right_peak.position)>0)
+			{
+				scan_up=false;
+				ROS_WARN("-touch up boundary ");
+			}
+			else
+			{
+				//last_edges.poses.push_back(up_right_peak);
+				edges.poses.push_back(up_right_peak);
+			}
+		}
+		else if(scan_right)
+		{
+			up_right_peak.position.x+=rcd*step;
+			if(get_Occupancy(up_right_peak.position)>0)
+			{
+				scan_right=false;
+				ROS_WARN("-touch  right boundary ");
+			}
+			else
+			{
+				//last_edges.poses.push_back(up_right_peak);
+				edges.poses.push_back(up_right_peak);
+			}
+		}
 
-	// //expand
-	// //int threshold=60000;
-	// int i=0;
-	// bool scan_up||scan_left=true;
-	// bool scan_up||scan_right=true;
-	// bool scan_down||scan_left=true;
-	// bool scan_down||scan_right=true;
-	// while(i<20)
-	// {	
-		// geometry_msgs::PoseArray last_edges=edges;
-		// edges.poses.clear();
-		// //scan peaks
-		// if(scan_up||scan_left)
-		// {
-		// 	up_left_peak.position.x-=rcd*step;
-		// 	if(get_Occupancy(down_right_peak.position)>0)
-		// 	{
-		// 		scan_down||scan_right=false;
-		// 		ROS_WARN("touch down right boundary ");
-		// 	}
-		// 	else
-		// 	{
-		// 		edges.poses.push_back(down_right_peak);
-		// 		ROS_INFO("add new peak at:[%.1f,%.1f] ",down_right_peak.position.x,down_right_peak.position.y);
-		// 	}
-		// }
-		// else
-		// 	edges.poses.push_back(down_right_peak);
+	}
+	else
+		edges.poses.push_back(up_right_peak);
 
-		//scan by edges
-		// for(geometry_msgs::Pose each_edge_pose:last_edges.poses)
-		// {
-		// 	if((each_edge_pose.position.x-start_pose_x>0)&&get_Occupancy(each_edge_pose.position.x+rcd,each_edge_pose.position.y)>0)
-		// 	{
-		// 		geometry_msgs::Pose n_pose;
-		// 		n_pose.position.x=each_edge_pose.position.x+rcd;
-		// 		n_pose.position.y=each_edge_pose.position.y;
-		// 		edges.poses.push_back(n_pose);
-		// 	}
-		// 	if((each_edge_pose.position.x-start_pose_x<0)&&get_Occupancy(each_edge_pose.position.x-rcd,each_edge_pose.position.y)>0)
-		// 	{
-		// 		geometry_msgs::Pose n_pose;
-		// 		n_pose.position.x=each_edge_pose.position.x-rcd;
-		// 		n_pose.position.y=each_edge_pose.position.y;
-		// 		edges.poses.push_back(n_pose);
-		// 	}
-		// 	if((each_edge_pose.position.y-start_pose_y>0)&&get_Occupancy(each_edge_pose.position.x,each_edge_pose.position.y+rcd)>0)
-		// 	{
-		// 		geometry_msgs::Pose n_pose;
-		// 		n_pose.position.x=each_edge_pose.position.x;
-		// 		n_pose.position.y=each_edge_pose.position.y+rcd;
-		// 		edges.poses.push_back(n_pose);
-		// 	}
-		// 	if((each_edge_pose.position.y-start_pose_y<0)&&get_Occupancy(each_edge_pose.position.x,each_edge_pose.position.y)>0)
-		// 	{
-		// 		geometry_msgs::Pose n_pose;
-		// 		n_pose.position.x=each_edge_pose.position.x;
-		// 		n_pose.position.y=each_edge_pose.position.y-rcd;
-		// 		edges.poses.push_back(n_pose);
-		// 	}
-		// }
+	if(scan_down||scan_left)
+	{
+		if(scan_down_left)
+		{
+			down_left_peak.position.x-=rcd*step;
+			down_left_peak.position.y-=rcd*step;
+			if(get_Occupancy(down_left_peak.position)>0)
+			{
+				scan_down_left=false;
+				ROS_WARN("-touch down left boundary ");
+			}
+			else
+			{
+				//last_edges.poses.push_back(down_left_peak);
+				edges.poses.push_back(down_left_peak);
+			}
+		}
+		else if(scan_down)
+		{
+			down_left_peak.position.y-=rcd*step;
+			if(get_Occupancy(down_left_peak.position)>0)
+			{
+				scan_down=false;
+				ROS_WARN("-touch down boundary ");
+			}
+			else
+			{
+				//last_edges.poses.push_back(down_left_peak);
+				edges.poses.push_back(down_left_peak);
+			}
+		}
+		else if(scan_left)
+		{
+			down_left_peak.position.x-=rcd*step;
+			if(get_Occupancy(down_left_peak.position)>0)
+			{
+				scan_left=false;
+				ROS_WARN("-touch left boundary ");
+			}
+			else
+			{
+				//last_edges.poses.push_back(down_left_peak);
+				edges.poses.push_back(down_left_peak);
+			}
+		}
+	}
+	else
+		edges.poses.push_back(down_left_peak);
+	if(scan_down||scan_right)
+	{
+		if(scan_down_right)
+		{
+			down_right_peak.position.x+=rcd*step;
+			down_right_peak.position.y-=rcd*step;
+			if(get_Occupancy(down_right_peak.position)>0)
+			{
+				scan_down_right=false;
+				ROS_WARN("-touch down right boundary ");
+			}
+			else
+			{
+				//last_edges.poses.push_back(down_right_peak);
+				edges.poses.push_back(down_right_peak);
+			}
+		}
+		else if(scan_down)
+		{
+			down_right_peak.position.y-=rcd*step;
+			if(get_Occupancy(down_right_peak.position)>0)
+			{
+				scan_down=false;
+				ROS_WARN("-touch down boundary ");
+			}
+			else
+			{
+				//last_edges.poses.push_back(down_right_peak);
+				edges.poses.push_back(down_right_peak);
+			}
+		}
+		else if(scan_right)
+		{
+			down_right_peak.position.x+=rcd*step;
+			if(get_Occupancy(down_right_peak.position)>0)
+			{
+				scan_right=false;
+				ROS_WARN("-touch right boundary ");
+			}
+			else
+			{
+				//last_edges.poses.push_back(down_right_peak);
+				edges.poses.push_back(down_right_peak);
+			}
+		}
+
+	}
+	else
+		edges.poses.push_back(down_right_peak);
+
+	//check boundary
+		//check up boundary
+	geometry_msgs::PoseArray up_edge=get_poses_between_peaks(up_left_peak,up_right_peak);
+	up_gateway.poses.clear();
+	for(geometry_msgs::Pose each_edge_pose:up_edge.poses)
+	{
+		if(get_Occupancy(each_edge_pose.position.x,each_edge_pose.position.y+rcd*step)==0)
+		{
+			geometry_msgs::Pose pose_;
+			pose_.position.x=each_edge_pose.position.x;
+			pose_.position.y=each_edge_pose.position.y+rcd*step;
+			up_gateway.poses.push_back(pose_);
+		}
+	}
+	if(scan_up)
+	{
+		for(geometry_msgs::Pose each_edge_pose:up_edge.poses)
+		{
+			if(get_Occupancy(each_edge_pose)>0)
+			{
+				scan_up=false;
+				scan_up_left=false;
+				scan_up_right=false;
+			}
+		}
+		if(!scan_up)
+		{
+			up_left_peak.position.y-=rcd*step;
+			up_right_peak.position.y-=rcd*step;
+			ROS_WARN("touch up boundary");
+		}
+	}
+	if(scan_up)
+	{
+		edges.poses.insert(edges.poses.end(),up_edge.poses.begin(),up_edge.poses.end());
+	}
+		//check left boundary
+	geometry_msgs::PoseArray left_edge=get_poses_between_peaks(up_left_peak,down_left_peak);
+	left_gateway.poses.clear();
+	for(geometry_msgs::Pose each_edge_pose:left_edge.poses)
+	{
+		if(get_Occupancy(each_edge_pose.position.x-rcd*step,each_edge_pose.position.y)==0)
+		{
+			geometry_msgs::Pose pose_;
+			pose_.position.x=each_edge_pose.position.x-rcd*step;
+			pose_.position.y=each_edge_pose.position.y;
+			left_gateway.poses.push_back(pose_);
+		}
+	}
+	if(scan_left)
+	{
+		for(geometry_msgs::Pose each_edge_pose:left_edge.poses)
+		{
+			if(get_Occupancy(each_edge_pose)>0)
+			{
+				scan_left=false;
+				scan_up_left=false;
+				scan_down_left=false;
+			}
+		}
+		if(!scan_left)
+		{
+			up_left_peak.position.x+=rcd*step;
+			down_left_peak.position.x+=rcd*step;
+			ROS_WARN("touch left boundary ");
+		}
+	}
+	if(scan_left)
+	{
+		edges.poses.insert(edges.poses.end(),left_edge.poses.begin(),left_edge.poses.end());
+	}
+		//check dowm boundary
+	geometry_msgs::PoseArray down_edge=get_poses_between_peaks(down_right_peak,down_left_peak);
+	down_gateway.poses.clear();
+	for(geometry_msgs::Pose each_edge_pose:down_edge.poses)
+	{
+		if(get_Occupancy(each_edge_pose.position.x,each_edge_pose.position.y-rcd*step)==0)
+		{
+			geometry_msgs::Pose pose_;
+			pose_.position.x=each_edge_pose.position.x;
+			pose_.position.y=each_edge_pose.position.y-rcd*step;
+			left_gateway.poses.push_back(pose_);
+		}
+	}
+	if(scan_down)
+	{
+		for(geometry_msgs::Pose each_edge_pose:down_edge.poses)
+		{
+			if(get_Occupancy(each_edge_pose)>0)
+			{
+				scan_down=false;
+				scan_down_left=false;
+				scan_down_right=false;
+			}
+		}
+		if(!scan_down)
+		{
+			down_right_peak.position.y+=rcd*step;
+			down_left_peak.position.y+=rcd*step;		
+			ROS_WARN("touch down boundary ");		
+		}
+	}
+	if(scan_down)
+	{
+		edges.poses.insert(edges.poses.end(),down_edge.poses.begin(),down_edge.poses.end());
+	}
+		//check right boundary
+	geometry_msgs::PoseArray right_edge=get_poses_between_peaks(up_right_peak,down_right_peak);
+	right_gateway.poses.clear();
+	for(geometry_msgs::Pose each_edge_pose:right_edge.poses)
+	{
+		if(get_Occupancy(each_edge_pose.position.x+rcd*step,each_edge_pose.position.y)==0)
+		{
+			geometry_msgs::Pose pose_;
+			pose_.position.x=each_edge_pose.position.x+rcd*step;
+			pose_.position.y=each_edge_pose.position.y;
+			right_gateway.poses.push_back(pose_);
+		}
+	}
+	if(scan_right)
+	{
+		for(geometry_msgs::Pose each_edge_pose:right_edge.poses)
+		{
+			if(get_Occupancy(each_edge_pose)>0)
+			{
+				scan_right=false;
+				scan_down_right=false;
+				scan_up_right=false;
+			}
+		}
+		if(!scan_right)
+		{
+			down_right_peak.position.x-=rcd*step;
+			up_right_peak.position.x-=rcd*step;		
+			ROS_WARN("touch right boundary");	
+		}
+	}
+	if(scan_right)
+	{
+		edges.poses.insert(edges.poses.end(),right_edge.poses.begin(),right_edge.poses.end());
+	}
 
 
+	points.points.clear();
+	draw_marker(edges);
 
-		//scan by edges
-		// for(geometry_msgs::Pose each_edge_pose:last_edges.poses)
-		// {
-		// 	if((each_edge_pose.position.y==up_left_peak.position.y)&&(!touch_up_boundary))
-		// 	{
-		// 		if(get_Occupancy(each_edge_pose.position.x,each_edge_pose.position.y+rcd)>0)
-		// 			touch_up_boundary=true;
-		// 		geometry_msgs::Pose n_pose;
-		// 		n_pose.position.x=each_edge_pose.position.x;
-		// 		n_pose.position.y=each_edge_pose.position.y+rcd;
-		// 		edges.poses.push_back(n_pose);
-		// 	}
-		// 	if((each_edge_pose.position.x==up_left_peak.position.x)&&(!scan_left))
-		// 	{
-		// 		if(get_Occupancy(each_edge_pose.position.x-rcd,each_edge_pose.position.y)>0)
-		// 			scan_left=true;
-		// 		geometry_msgs::Pose n_pose;
-		// 		n_pose.position.x=each_edge_pose.position.x-rcd;
-		// 		n_pose.position.y=each_edge_pose.position.y;
-		// 		edges.poses.push_back(n_pose);
-		// 	}
-		// 	if((each_edge_pose.position.y==down_left_peak.position.y)&&(!scan_down))
-		// 	{
-		// 		if(get_Occupancy(each_edge_pose.position.x,each_edge_pose.position.y-rcd)>0)
-		// 			scan_down=true;
-		// 		geometry_msgs::Pose n_pose;
-		// 		n_pose.position.x=each_edge_pose.position.x;
-		// 		n_pose.position.y=each_edge_pose.position.y-rcd;
-		// 		edges.poses.push_back(n_pose);
-		// 	}
-		// 	if((each_edge_pose.position.x==down_right_peak.position.x)&&(!scan_right))
-		// 	{
-		// 		if(get_Occupancy(each_edge_pose.position.x+rcd,each_edge_pose.position.y)>0)
-		// 			scan_right=true;
-		// 		geometry_msgs::Pose n_pose;
-		// 		n_pose.position.x=each_edge_pose.position.x+rcd;
-		// 		n_pose.position.y=each_edge_pose.position.y;
-		// 		edges.poses.push_back(n_pose);
-		// 	}
-		// }
-		
-		//ROS_INFO("edge size:%d",edges.poses.size());
-	// 	points.points.clear();
-	// 	draw_marker(edges);
-	// 	i++;
-	// }
+	gateway_and_peaks.poses.insert(gateway_and_peaks.poses.end(),up_gateway.poses.begin(),up_gateway.poses.end());
+	gateway_and_peaks.poses.insert(gateway_and_peaks.poses.end(),left_gateway.poses.begin(),left_gateway.poses.end());
+	gateway_and_peaks.poses.insert(gateway_and_peaks.poses.end(),down_gateway.poses.begin(),down_gateway.poses.end());
+	gateway_and_peaks.poses.insert(gateway_and_peaks.poses.end(),right_gateway.poses.begin(),right_gateway.poses.end());
+	gateway_and_peaks.poses.push_back(up_left_peak);
+	gateway_and_peaks.poses.push_back(down_left_peak);
+	gateway_and_peaks.poses.push_back(down_right_peak);
+	gateway_and_peaks.poses.push_back(up_right_peak);
+	if(!scan_down&&!scan_up&&!scan_right&&!scan_left)//done flag
+	{
+		gateway_and_peaks.header.seq=1;
+		rect_init_flag=false;
+		ROS_WARN("first rectangle expand succeed!");
+	}
+	else
+	{
+		gateway_and_peaks.header.seq=0;
+	}
+	return gateway_and_peaks;
+	
 }
 
 int main(int argc, char *argv[])
