@@ -1,12 +1,12 @@
 <launch>
 
     <!--机器人直径-->
-    <arg name="rcd" default="0.3" />
+    <arg name="rcd" default="0.25" />
     <!--机器人起始位置 /map-->
-    <arg name="start_pose_x" default="15.0" />
+    <arg name="start_pose_x" default="8.0" />
     <arg name="start_pose_y" default="2.0" />
     <!--搜索步长-->
-    <arg name="step" default="0.2" />
+    <arg name="step" default="0.6" />
 
     <!--stage仿真环境加载-->
     <include file="$(find stage)/launch/stage.launch"/>

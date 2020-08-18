@@ -26,24 +26,29 @@ private:
     ros::NodeHandle n;
 	nav_msgs::OccupancyGrid map_;
 
-	ros::Publisher rect_pub,marker_pub;
+	ros::Publisher rect_pub,marker_pub,map_pub;
     ros::Timer timer;
     void testpub_loopCB(const ros::TimerEvent&);
 	void spawm_loopCB(const ros::TimerEvent&);
 	ros::Subscriber map_sub;
-	void mapCB(const nav_msgs::OccupancyGridConstPtr& map);
+	void mapCB(const nav_msgs::OccupancyGrid& map);
 	int8_t get_Occupancy(const geometry_msgs::Point& position);
 	int8_t get_Occupancy(const geometry_msgs::Pose& pose);
 	int8_t get_Occupancy(const float& x,const float& y);
+	void set_Occupancy(const float& x,const float& y,const int8_t& ocpc_);
+	void set_Occupancy(const geometry_msgs::PoseArray& pose_array_,const int8_t& ocpc_);
+	void set_Occupancy(const walk_in_rectangle::Rectangle& rect_,const int8_t& ocpc_);
+	int get_index(const float& x_,const float& y_);
 	void init_marker();
+	void init_rectangle(const double& start_x_,const double& start_y_);
 	visualization_msgs::Marker points, line_strip, goal_circle;
 	void draw_marker(const geometry_msgs::Point& position);
 	void draw_marker(const geometry_msgs::Pose& pose);
 	void draw_marker(const geometry_msgs::PoseArray& pose_array);
 	void draw_marker(const walk_in_rectangle::Rectangle& rect_);
-	geometry_msgs::PoseArray expand_rectangle(const double& start_x_,const double& start_y_);
+	geometry_msgs::PoseArray expand_rectangle();
 	geometry_msgs::PoseArray get_poses_between_peaks(geometry_msgs::Pose& peak1,geometry_msgs::Pose& peak2);
-	void save_rect( geometry_msgs::PoseArray& rect_pose_array);
+	void save_rect( const walk_in_rectangle::Rectangle& rect_buffer_);
 
 	geometry_msgs::Pose up_left_peak;
 	geometry_msgs::Pose up_right_peak;
@@ -51,8 +56,10 @@ private:
 	geometry_msgs::Pose down_right_peak;
 	geometry_msgs::PoseArray edges;
 	geometry_msgs::PoseArray left_gateway,right_gateway,up_gateway,down_gateway;
-	geometry_msgs::PoseArray first_rect,second_rect;
+	geometry_msgs::PoseArray first_rect,second_rect,process_data_buffer;
+	geometry_msgs::PoseArray seed_stack;//FIFO
 	std::vector<walk_in_rectangle::Rectangle> rectangle_array;
+	walk_in_rectangle::Rectangle rect_buffer;
 	bool map_receive_flag=false;
 	bool scan_up_left=true;
 	bool scan_down_left=true;
@@ -62,9 +69,11 @@ private:
 	bool scan_down=true;
 	bool scan_left=true;
 	bool scan_right=true;
-	bool rect_init_flag=false;
 	bool first_prepare_flag=true;
+	bool rect_expand_finish_flag=false;
+	bool occupied_flag=false;
 	double step;
+	double seed_x,seed_y;
 
 	enum STATUS {PREPARE,PROCESS,DONE} status;
 };
@@ -81,10 +90,11 @@ SPAWM_RECTANGLE::SPAWM_RECTANGLE()
 	ROS_INFO("\n rcd:%.1f,start_pose_x:%.1f,start_pose_y:%.1f,step:%.2f \n",rcd,start_pose_x,start_pose_y,step);
 
 	map_sub=n.subscribe("/map", 1, &SPAWM_RECTANGLE::mapCB, this);//nav_msgs/OccupancyGrid
+	map_pub=n.advertise<nav_msgs::OccupancyGrid>("/N_map",10);
 	marker_pub = n.advertise<visualization_msgs::Marker>("/Marker", 10);
 
 	status=PREPARE;
-	timer = n.createTimer(ros::Duration((1.0)/20), &SPAWM_RECTANGLE::spawm_loopCB, this);
+	timer = n.createTimer(ros::Duration((1.0)/200), &SPAWM_RECTANGLE::spawm_loopCB, this);
 	//timer = n.createTimer(ros::Duration((1.0)/0.5), &SPAWM_RECTANGLE::testpub_loopCB, this);
 
 	init_marker();
@@ -92,12 +102,13 @@ SPAWM_RECTANGLE::SPAWM_RECTANGLE()
 	// ros::Duration(1.0).sleep();
 
 }
-void SPAWM_RECTANGLE::mapCB(const nav_msgs::OccupancyGridConstPtr& map)
+void SPAWM_RECTANGLE::mapCB(const nav_msgs::OccupancyGrid& map)
 {	
-	map_=*map;
+	map_=map;
 	//map_.info.resolution=0.05;
 	map_receive_flag=true;
 	ROS_INFO("map received");
+	map_pub.publish(map_);
 	// ROS_INFO("map_.data.siz:%d,map_.info.resolutio:%.3f\n",map_.data.size(),map_.info.resolution);
 
 }
@@ -234,7 +245,10 @@ int8_t SPAWM_RECTANGLE::get_Occupancy(const float& x,const float& y)
 		//ROS_INFO("index:%d,Occupancy:%d",index,Occupancy);
 	}
 	else
-		ROS_ERROR("index WARN");
+	{
+		ROS_ERROR("index WARN,[%.2f,%.2f]",x,y);
+	}
+		
 		
 	// if(Occupancy>0)
 	// {
@@ -245,6 +259,104 @@ int8_t SPAWM_RECTANGLE::get_Occupancy(const float& x,const float& y)
 	// 	draw_marker(marker_point);
 	// }		
 	return Occupancy;
+}
+void SPAWM_RECTANGLE::set_Occupancy(const float& x,const float& y,const int8_t& ocpc_)
+{
+	int8_t Occupancy=-1;
+	if(map_.info.resolution==0)
+	{
+		ROS_WARN("map_.info.resolution=%.3f,unknow Occupancy",map_.info.resolution);
+	}
+	int index;
+	int row=(fabs(y-map_data_origion_y)/map_.info.resolution);//像素行数
+	//ROS_INFO("row:%d",row);
+	int col=map_.info.width;//像素列数
+	//ROS_INFO("col:%d",col);
+	int remain=(fabs(x-map_data_origion_x)/map_.info.resolution);
+	//ROS_INFO("remain:%d",remain);
+	// （y坐标/分辨率）×宽度+（x坐标/分辨率） 	//data[] 为行优先
+	index=(int)(row*col+remain);
+	//ROS_INFO("index:%d,width:%d,height:%d",index,map_.info.width,map_.info.height);
+
+	if(index<=(map_.info.width*map_.info.height))
+	{
+		map_.data[index]=ocpc_;
+		// map_.data[index+1]=ocpc_;
+		// map_.data[index-1]=ocpc_;
+		// map_.data[index+col]=ocpc_;
+		// map_.data[index-col]=ocpc_;
+		// map_.data[index+1+col]=ocpc_;
+		// map_.data[index-1+col]=ocpc_;
+		// map_.data[index+1-col]=ocpc_;
+		// map_.data[index-1-col]=ocpc_;
+		
+		//ROS_INFO("index:%d,Occupancy:%d",index,Occupancy);
+	}
+	else
+		ROS_ERROR("index WARN");
+		
+}
+void SPAWM_RECTANGLE::set_Occupancy(const geometry_msgs::PoseArray& pose_array_,const int8_t& ocpc_)
+{
+	if(map_.info.resolution==0)
+	{
+		ROS_WARN("map_.info.resolution=%.3f,unknow Occupancy",map_.info.resolution);
+	}
+
+	for(geometry_msgs::Pose each_pose:pose_array_.poses)
+	{
+		float x=each_pose.position.x;
+		float y=each_pose.position.y;
+		int index;
+		int row=(fabs(y-map_data_origion_y)/map_.info.resolution);//像素行数
+		int col=map_.info.width;//像素列数
+		int remain=(fabs(x-map_data_origion_x)/map_.info.resolution);
+		index=(int)(row*col+remain);
+		if(index<=(map_.info.width*map_.info.height))
+		{
+			map_.data[index]=ocpc_;
+			// map_.data[index+1]=ocpc_;
+			// map_.data[index-1]=ocpc_;
+			// map_.data[index+col]=ocpc_;
+			// map_.data[index-col]=ocpc_;
+			// map_.data[index+1+col]=ocpc_;
+			// map_.data[index-1+col]=ocpc_;
+			// map_.data[index+1-col]=ocpc_;
+			// map_.data[index-1-col]=ocpc_;
+		}
+		else
+			ROS_ERROR("index WARN");
+	}
+	map_pub.publish(map_);	
+}
+int SPAWM_RECTANGLE::get_index(const float& x_,const float& y_)
+{
+	float x= x_;
+	float y= y_;
+	int index;
+	int row=(fabs(y-map_data_origion_y)/map_.info.resolution);//像素行数
+	int col=map_.info.width;//像素列数
+	int remain=(fabs(x-map_data_origion_x)/map_.info.resolution);
+	index=(int)(row*col+remain);
+	return index;
+}
+void SPAWM_RECTANGLE::set_Occupancy( const walk_in_rectangle::Rectangle& rect_,const int8_t& ocpc_)
+{
+	int index_U_L=get_index(rect_.U_L.x,rect_.U_L.y);
+	int index_U_R=get_index(rect_.U_R.x,rect_.U_R.y);
+	int index_D_L=get_index(rect_.D_L.x,rect_.D_L.y);
+	int index_D_R=get_index(rect_.D_R.x,rect_.D_R.y);
+	ROS_INFO("%d %d %d %d",index_U_L,index_U_R,index_D_L,index_D_R);
+
+	for(int i=0;i<=abs(index_U_R-index_D_R)/500;i++)
+	{
+		for(int j=0;j<abs( index_D_L-index_D_R);j++)
+		{
+			map_.data[500*i+j+index_D_L]=ocpc_;
+		}
+	}
+
+	map_pub.publish(map_);	
 }
 void SPAWM_RECTANGLE::draw_marker(const geometry_msgs::Point& position)
 {
@@ -300,49 +412,73 @@ void SPAWM_RECTANGLE::spawm_loopCB(const ros::TimerEvent&)
 		{
 			if(first_prepare_flag)
 			{
-
+				seed_x=start_pose_x;
+				seed_y=start_pose_y;
+				init_rectangle(seed_x,seed_y);
 				status=PROCESS;
 				first_prepare_flag=false;
+				ROS_INFO("init first rect");
 			}
 			else
 			{
-				//get edge && set edge occupied
-
 				//get rectangle
-
+				save_rect(rect_buffer);
+				//get edge && set edge occupied
+				set_Occupancy(rect_buffer,20);
 				//stash new seed list
-
-				//get next seed from stack button && erease it from stack && check if occupied
-
-				//set status to process
-				status=PROCESS;
+				if(!occupied_flag)
+					seed_stack.poses.insert(seed_stack.poses.end(),process_data_buffer.poses.begin(),process_data_buffer.poses.end());
+				//check if stack empty
+				if(seed_stack.poses.empty())
+				{
+					ROS_WARN("seed_stack is empty");
+					status=DONE;
+				}
+				else
+				{	//get next seed from stack button && pop first seed && check if occupied 
+					seed_x=seed_stack.poses.front().position.x;
+					seed_y=seed_stack.poses.front().position.y;
+					ROS_INFO("seed:[%.2f,%.2f]",seed_x,seed_y);
+					seed_stack.poses.erase(seed_stack.poses.begin());
+					if(get_Occupancy(seed_x,seed_y)>0)
+					{
+						ROS_WARN("seed occupied,check next");
+						occupied_flag=true;
+					}
+					else
+					{
+						//init process
+						init_rectangle(seed_x,seed_y);		
+						//set status to process
+						status=PROCESS;
+						occupied_flag=false;
+					}
+				}
 			}
 		}
 		else if(status==PROCESS)
 		{
+			//process
+			process_data_buffer=expand_rectangle();
 			//check if finished
-			//if(finished)
-			//{
+			if(rect_expand_finish_flag)
+			{
 				//set status to prepare
 				status=PREPARE;
-			//}
-			//else
-			//{
-				//expand rectangle
-			//}
+			}
 		}
 		else if(status==DONE)
 		{
 			//do nothing
 		}
 
-		if(first_rect.header.seq==0)//expanding
-			first_rect=expand_rectangle(start_pose_x,start_pose_y);
-		else if(first_rect.header.seq==1)//save first rectangle to rectangle_array
-		{
-			save_rect(first_rect);
-			first_rect.header.seq=-1;
-		}
+		// if(first_rect.header.seq==0)//expanding
+		// 	first_rect=expand_rectangle(start_pose_x,start_pose_y);
+		// else if(first_rect.header.seq==1)//save first rectangle to rectangle_array
+		// {
+		// 	save_rect(first_rect);
+		// 	first_rect.header.seq=-1;
+		// }
 
 		// for(geometry_msgs::Pose each_edge_pose:first_rect.poses)
 		// {
@@ -355,23 +491,16 @@ void SPAWM_RECTANGLE::spawm_loopCB(const ros::TimerEvent&)
 		// 		save_rect(second_rect);
 		// 		second_rect.header.seq=-1;
 		// 	}
-		// }
-
-			
-			
+		// }					
 	}
 }
-void SPAWM_RECTANGLE::save_rect(geometry_msgs::PoseArray& rect_pose_array)
+void SPAWM_RECTANGLE::save_rect(const walk_in_rectangle::Rectangle& rect_buffer_)
 {
-	walk_in_rectangle::Rectangle rect_;
-	rect_.U_R=rect_pose_array.poses.back().position;	rect_pose_array.poses.pop_back();
-	rect_.D_R=rect_pose_array.poses.back().position;	rect_pose_array.poses.pop_back();
-	rect_.D_L=rect_pose_array.poses.back().position;	rect_pose_array.poses.pop_back();
-	rect_.U_L=rect_pose_array.poses.back().position;	rect_pose_array.poses.pop_back();
+	walk_in_rectangle::Rectangle rect_=rect_buffer_;
 	ROS_INFO("\n rect_.U_R:[%.2f,%.2f]\n rect_.D_R:[%.2f,%.2f]\n rect_.D_L:[%.2f,%.2f]\n rect_.U_L:[%.2f,%.2f]",
 					rect_.U_R.x,rect_.U_R.y,rect_.D_R.x,rect_.D_R.y,rect_.D_L.x,rect_.D_L.y,rect_.U_L.x,rect_.U_L.y);
 	rectangle_array.push_back(rect_);
-	draw_marker(rect_);
+	//draw_marker(rect_);
 }
 
 geometry_msgs::PoseArray SPAWM_RECTANGLE::get_poses_between_peaks(geometry_msgs::Pose& peak1,geometry_msgs::Pose& peak2)
@@ -441,25 +570,34 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::get_poses_between_peaks(geometry_msgs:
 	//ROS_INFO("add %d edge points",counter);
 	return edge;
 }
+void SPAWM_RECTANGLE::init_rectangle(const double& start_x_,const double& start_y_)
+{
+	up_left_peak.position.x=start_x_;
+	up_left_peak.position.y=start_y_;
+	up_right_peak.position.x=start_x_;
+	up_right_peak.position.y=start_y_;
+	down_left_peak.position.x=start_x_;
+	down_left_peak.position.y=start_y_;
+	down_right_peak.position.x=start_x_;
+	down_right_peak.position.y=start_y_;
 
-geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x_,const double& start_y_)
+	scan_up_left=true;
+	scan_up_right=true;
+	scan_down_left=true;
+	scan_down_right=true;
+	scan_down=true;
+	scan_up=true;
+	scan_right=true;
+	scan_left=true;
+	rect_expand_finish_flag=false;
+
+	edges.poses.clear();
+	edges.poses.push_back(up_left_peak);
+	ROS_INFO("init new rect expand");
+}
+geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle()
 {  
-	if(!rect_init_flag)
-	{
-		up_left_peak.position.x=start_x_;
-		up_left_peak.position.y=start_y_;
-		up_right_peak.position.x=start_x_;
-		up_right_peak.position.y=start_y_;
-		down_left_peak.position.x=start_x_;
-		down_left_peak.position.y=start_y_;
-		down_right_peak.position.x=start_x_;
-		down_right_peak.position.y=start_y_;
-
-		edges.poses.push_back(up_left_peak);
-		rect_init_flag=true;
-		ROS_INFO("init new rect expand");
-	}
-	geometry_msgs::PoseArray gateway_and_peaks;
+	geometry_msgs::PoseArray gateway;
 	//geometry_msgs::PoseArray last_edges=edges;
 	edges.poses.clear();
 	//scan peaks
@@ -467,10 +605,10 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 	{
 		if(scan_up_left)
 		{
-			up_left_peak.position.x-=rcd*step;
-			up_left_peak.position.y+=rcd*step;
-			if(get_Occupancy(up_left_peak.position)>0)
+			if(get_Occupancy(up_left_peak.position.x-=rcd*step,up_left_peak.position.y+=rcd*step)>0)
 			{
+				up_left_peak.position.x+=rcd*step;
+				up_left_peak.position.y-=rcd*step;
 				scan_up_left=false;
 				ROS_WARN("-touch up left boundary ");
 			}
@@ -482,9 +620,9 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 		}
 		else if(scan_up)
 		{
-			up_left_peak.position.y+=rcd*step;
-			if(get_Occupancy(up_left_peak.position)>0)
+			if(get_Occupancy(up_left_peak.position.x,up_left_peak.position.y+=rcd*step)>0)
 			{
+				up_left_peak.position.y-=rcd*step;
 				scan_up=false;
 				ROS_WARN("-touch up boundary ");
 			}
@@ -496,9 +634,9 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 		}
 		else if(scan_left)
 		{
-			up_left_peak.position.x-=rcd*step;
-			if(get_Occupancy(up_left_peak.position)>0)
+			if(get_Occupancy(up_left_peak.position.x-=rcd*step,up_left_peak.position.y)>0)
 			{
+				up_left_peak.position.x+=rcd*step;
 				scan_left=false;
 				ROS_WARN("-touch left boundary ");
 			}
@@ -516,10 +654,10 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 	{
 		if(scan_up_right)
 		{
-			up_right_peak.position.x+=rcd*step;
-			up_right_peak.position.y+=rcd*step;
-			if(get_Occupancy(up_right_peak.position)>0)
+			if(get_Occupancy(up_right_peak.position.x+=rcd*step,up_right_peak.position.y+=rcd*step)>0)
 			{
+				up_right_peak.position.x-=rcd*step;
+				up_right_peak.position.y-=rcd*step;
 				scan_up_right=false;
 				ROS_WARN("touch up right boundary ");
 			}
@@ -531,9 +669,9 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 		}
 		else if(scan_up)
 		{
-			up_right_peak.position.y+=rcd*step;
-			if(get_Occupancy(up_right_peak.position)>0)
+			if(get_Occupancy(up_right_peak.position.x,up_right_peak.position.y+=rcd*step)>0)
 			{
+				up_right_peak.position.y-=rcd*step;
 				scan_up=false;
 				ROS_WARN("-touch up boundary ");
 			}
@@ -545,9 +683,9 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 		}
 		else if(scan_right)
 		{
-			up_right_peak.position.x+=rcd*step;
-			if(get_Occupancy(up_right_peak.position)>0)
+			if(get_Occupancy(up_right_peak.position.x+=rcd*step,up_right_peak.position.y)>0)
 			{
+				up_right_peak.position.x-=rcd*step;
 				scan_right=false;
 				ROS_WARN("-touch  right boundary ");
 			}
@@ -566,10 +704,10 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 	{
 		if(scan_down_left)
 		{
-			down_left_peak.position.x-=rcd*step;
-			down_left_peak.position.y-=rcd*step;
-			if(get_Occupancy(down_left_peak.position)>0)
+			if(get_Occupancy(down_left_peak.position.x-=rcd*step,down_left_peak.position.y-=rcd*step)>0)
 			{
+				down_left_peak.position.x+=rcd*step;
+				down_left_peak.position.y+=rcd*step;
 				scan_down_left=false;
 				ROS_WARN("-touch down left boundary ");
 			}
@@ -581,9 +719,9 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 		}
 		else if(scan_down)
 		{
-			down_left_peak.position.y-=rcd*step;
-			if(get_Occupancy(down_left_peak.position)>0)
+			if(get_Occupancy(down_left_peak.position.x,down_left_peak.position.y-=rcd*step)>0)
 			{
+				down_left_peak.position.y+=rcd*step;
 				scan_down=false;
 				ROS_WARN("-touch down boundary ");
 			}
@@ -596,7 +734,7 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 		else if(scan_left)
 		{
 			down_left_peak.position.x-=rcd*step;
-			if(get_Occupancy(down_left_peak.position)>0)
+			if(get_Occupancy(down_left_peak.position.x-=rcd*step,down_left_peak.position.y)>0)
 			{
 				scan_left=false;
 				ROS_WARN("-touch left boundary ");
@@ -614,10 +752,10 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 	{
 		if(scan_down_right)
 		{
-			down_right_peak.position.x+=rcd*step;
-			down_right_peak.position.y-=rcd*step;
-			if(get_Occupancy(down_right_peak.position)>0)
+			if(get_Occupancy(down_right_peak.position.x+=rcd*step,down_right_peak.position.y-=rcd*step)>0)
 			{
+				down_right_peak.position.x-=rcd*step;
+				down_right_peak.position.y+=rcd*step;
 				scan_down_right=false;
 				ROS_WARN("-touch down right boundary ");
 			}
@@ -629,9 +767,9 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 		}
 		else if(scan_down)
 		{
-			down_right_peak.position.y-=rcd*step;
-			if(get_Occupancy(down_right_peak.position)>0)
+			if(get_Occupancy(down_right_peak.position.x,down_right_peak.position.y-=rcd*step)>0)
 			{
+				down_right_peak.position.y+=rcd*step;
 				scan_down=false;
 				ROS_WARN("-touch down boundary ");
 			}
@@ -643,9 +781,9 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 		}
 		else if(scan_right)
 		{
-			down_right_peak.position.x+=rcd*step;
-			if(get_Occupancy(down_right_peak.position)>0)
+			if(get_Occupancy(down_right_peak.position.x+=rcd*step,down_right_peak.position.y)>0)
 			{
+				down_right_peak.position.x-=rcd*step;
 				scan_right=false;
 				ROS_WARN("-touch right boundary ");
 			}
@@ -659,6 +797,24 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 	}
 	else
 		edges.poses.push_back(down_right_peak);
+	
+	//check peak
+	if(up_left_peak.position.y>up_right_peak.position.y)
+		up_left_peak.position.y=up_right_peak.position.y;
+	if(up_left_peak.position.y<up_right_peak.position.y)
+		up_right_peak.position.y=up_left_peak.position.y;
+	if(up_left_peak.position.x>down_left_peak.position.x)
+		down_left_peak.position.x=up_left_peak.position.x;
+	if(up_left_peak.position.x<down_left_peak.position.x)
+		up_left_peak.position.x=down_left_peak.position.x;
+	if(down_right_peak.position.y>down_left_peak.position.y)
+		down_left_peak.position.y=down_right_peak.position.y;
+	if(down_right_peak.position.y<down_left_peak.position.y)
+		down_right_peak.position.y=down_left_peak.position.y;
+	if(up_right_peak.position.x>down_right_peak.position.x)
+		up_right_peak.position.x=down_right_peak.position.x;
+	if(up_right_peak.position.x<down_right_peak.position.x)
+		down_right_peak.position.x=up_right_peak.position.x;
 
 	//check boundary
 		//check up boundary
@@ -670,7 +826,7 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 		{
 			geometry_msgs::Pose pose_;
 			pose_.position.x=each_edge_pose.position.x;
-			pose_.position.y=each_edge_pose.position.y+rcd*step;
+			pose_.position.y=each_edge_pose.position.y+map_.info.resolution;
 			up_gateway.poses.push_back(pose_);
 		}
 	}
@@ -687,15 +843,17 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 		}
 		if(!scan_up)
 		{
+			for(int i=0;i<up_edge.poses.size();i++)//geometry_msgs::Pose each_edge_pose:up_edge.poses)
+			{
+				up_edge.poses[i].position.y-=rcd*step;
+			}
 			up_left_peak.position.y-=rcd*step;
 			up_right_peak.position.y-=rcd*step;
 			ROS_WARN("touch up boundary");
 		}
 	}
-	if(scan_up)
-	{
-		edges.poses.insert(edges.poses.end(),up_edge.poses.begin(),up_edge.poses.end());
-	}
+	edges.poses.insert(edges.poses.end(),up_edge.poses.begin(),up_edge.poses.end());
+
 		//check left boundary
 	geometry_msgs::PoseArray left_edge=get_poses_between_peaks(up_left_peak,down_left_peak);
 	left_gateway.poses.clear();
@@ -704,7 +862,7 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 		if(get_Occupancy(each_edge_pose.position.x-rcd*step,each_edge_pose.position.y)==0)
 		{
 			geometry_msgs::Pose pose_;
-			pose_.position.x=each_edge_pose.position.x-rcd*step;
+			pose_.position.x=each_edge_pose.position.x-map_.info.resolution;
 			pose_.position.y=each_edge_pose.position.y;
 			left_gateway.poses.push_back(pose_);
 		}
@@ -722,15 +880,16 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 		}
 		if(!scan_left)
 		{
+			for(int i=0;i<left_edge.poses.size();i++)
+			{
+				left_edge.poses[i].position.x+=rcd*step;
+			}
 			up_left_peak.position.x+=rcd*step;
 			down_left_peak.position.x+=rcd*step;
 			ROS_WARN("touch left boundary ");
 		}
 	}
-	if(scan_left)
-	{
-		edges.poses.insert(edges.poses.end(),left_edge.poses.begin(),left_edge.poses.end());
-	}
+	edges.poses.insert(edges.poses.end(),left_edge.poses.begin(),left_edge.poses.end());
 		//check dowm boundary
 	geometry_msgs::PoseArray down_edge=get_poses_between_peaks(down_right_peak,down_left_peak);
 	down_gateway.poses.clear();
@@ -740,7 +899,7 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 		{
 			geometry_msgs::Pose pose_;
 			pose_.position.x=each_edge_pose.position.x;
-			pose_.position.y=each_edge_pose.position.y-rcd*step;
+			pose_.position.y=each_edge_pose.position.y-map_.info.resolution;
 			left_gateway.poses.push_back(pose_);
 		}
 	}
@@ -757,15 +916,17 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 		}
 		if(!scan_down)
 		{
+			for(int i=0;i<down_edge.poses.size();i++)
+			{
+				down_edge.poses[i].position.y+=rcd*step;
+			}
 			down_right_peak.position.y+=rcd*step;
 			down_left_peak.position.y+=rcd*step;		
 			ROS_WARN("touch down boundary ");		
 		}
 	}
-	if(scan_down)
-	{
-		edges.poses.insert(edges.poses.end(),down_edge.poses.begin(),down_edge.poses.end());
-	}
+	edges.poses.insert(edges.poses.end(),down_edge.poses.begin(),down_edge.poses.end());
+
 		//check right boundary
 	geometry_msgs::PoseArray right_edge=get_poses_between_peaks(up_right_peak,down_right_peak);
 	right_gateway.poses.clear();
@@ -774,7 +935,7 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 		if(get_Occupancy(each_edge_pose.position.x+rcd*step,each_edge_pose.position.y)==0)
 		{
 			geometry_msgs::Pose pose_;
-			pose_.position.x=each_edge_pose.position.x+rcd*step;
+			pose_.position.x=each_edge_pose.position.x+map_.info.resolution;
 			pose_.position.y=each_edge_pose.position.y;
 			right_gateway.poses.push_back(pose_);
 		}
@@ -792,39 +953,43 @@ geometry_msgs::PoseArray SPAWM_RECTANGLE::expand_rectangle(const double& start_x
 		}
 		if(!scan_right)
 		{
+			for(int i=0;i<right_edge.poses.size();i++)
+			{
+				right_edge.poses[i].position.x-=rcd*step;
+			}
 			down_right_peak.position.x-=rcd*step;
 			up_right_peak.position.x-=rcd*step;		
 			ROS_WARN("touch right boundary");	
 		}
 	}
-	if(scan_right)
-	{
-		edges.poses.insert(edges.poses.end(),right_edge.poses.begin(),right_edge.poses.end());
-	}
+	edges.poses.insert(edges.poses.end(),right_edge.poses.begin(),right_edge.poses.end());
+
 
 
 	points.points.clear();
-	draw_marker(edges);
+	//draw_marker(edges);
 
-	gateway_and_peaks.poses.insert(gateway_and_peaks.poses.end(),up_gateway.poses.begin(),up_gateway.poses.end());
-	gateway_and_peaks.poses.insert(gateway_and_peaks.poses.end(),left_gateway.poses.begin(),left_gateway.poses.end());
-	gateway_and_peaks.poses.insert(gateway_and_peaks.poses.end(),down_gateway.poses.begin(),down_gateway.poses.end());
-	gateway_and_peaks.poses.insert(gateway_and_peaks.poses.end(),right_gateway.poses.begin(),right_gateway.poses.end());
-	gateway_and_peaks.poses.push_back(up_left_peak);
-	gateway_and_peaks.poses.push_back(down_left_peak);
-	gateway_and_peaks.poses.push_back(down_right_peak);
-	gateway_and_peaks.poses.push_back(up_right_peak);
+	gateway.poses.insert(gateway.poses.end(),up_gateway.poses.begin(),up_gateway.poses.end());
+	gateway.poses.insert(gateway.poses.end(),left_gateway.poses.begin(),left_gateway.poses.end());
+	gateway.poses.insert(gateway.poses.end(),down_gateway.poses.begin(),down_gateway.poses.end());
+	gateway.poses.insert(gateway.poses.end(),right_gateway.poses.begin(),right_gateway.poses.end());
+
+	//draw_marker(gateway);
+	rect_buffer.U_L=up_left_peak.position;
+	rect_buffer.D_L=down_left_peak.position;
+	rect_buffer.D_R=down_right_peak.position;
+	rect_buffer.U_R=up_right_peak.position;
+	draw_marker(rect_buffer);
 	if(!scan_down&&!scan_up&&!scan_right&&!scan_left)//done flag
 	{
-		gateway_and_peaks.header.seq=1;
-		rect_init_flag=false;
-		ROS_WARN("first rectangle expand succeed!");
+		rect_expand_finish_flag=true;
+		ROS_WARN("rectangle expand succeed!");
 	}
 	else
 	{
-		gateway_and_peaks.header.seq=0;
+		rect_expand_finish_flag=false;
 	}
-	return gateway_and_peaks;
+	return gateway;
 	
 }
 
