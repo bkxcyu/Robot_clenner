@@ -6,8 +6,6 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
-        - /Grid1
-        - /Map1
         - /Path1
         - /Marker1
       Splitter Ratio: 0.5
@@ -95,7 +93,7 @@ Visualization Manager:
       Use rainbow: true
       Value: false
     - Alpha: 1
-      Buffer Length: 50
+      Buffer Length: 10000
       Class: rviz/Path
       Color: 25; 255; 0
       Enabled: true
