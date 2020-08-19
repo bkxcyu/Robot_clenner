@@ -1,3 +1,4 @@
+// Author: bxy
 #include "ros/ros.h"
 #include "std_msgs/String.h"
 #include <sstream>
@@ -20,7 +21,6 @@ public:
 	Walk_in_rectangle();
 	double rcd;//robot_cleanner_diameter
 
-
 private:
 	ros::NodeHandle n;
 	ros::Publisher cmd_pub;
@@ -29,6 +29,7 @@ private:
 	tf::TransformBroadcaster br;
 	tf::Transform transform;
 
+	//This is the main loop, subscribing rectangles from spawm_rectangle, planning path in each of them, then publish the path.
 	void rectangleCB(const walk_in_rectangle::Rectangle& rectangle);
 };
 
@@ -47,6 +48,7 @@ Walk_in_rectangle::Walk_in_rectangle()
 }
 void Walk_in_rectangle::rectangleCB(const walk_in_rectangle::Rectangle& rectangle)
 {
+	//set up left peak of the rectangle as the refrence frame of path
     transform.setOrigin( tf::Vector3(rectangle.U_L.x, rectangle.U_L.y, 0.0) );
     transform.setRotation( tf::Quaternion(0, 0, 0, 1) );
     br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "/map", "/currant_path_plan_origion"));
@@ -55,19 +57,10 @@ void Walk_in_rectangle::rectangleCB(const walk_in_rectangle::Rectangle& rectangl
 	path.header.frame_id="/currant_path_plan_origion";
 	path.header.stamp=ros::Time::now();
 
-	// for(int i=0;i<path.poses.size();i++)
-	// {
-	// 	path.poses[i].pose.position.x=rectangle.U_L.x-last_path_plan_origion.x;
-	// 	path.poses[i].pose.position.y=rectangle.U_L.y-last_path_plan_origion.y;
-	// }
-	// last_path_plan_origion=rectangle.U_L;
-
 	double x_dist=fabs(rectangle.U_L.x-rectangle.U_R.x);
 	double y_dist=fabs(rectangle.U_L.y-rectangle.D_L.y);
-	//ROS_INFO("x_dist:%.2f,y_dist:%.2f",x_dist,y_dist);
 	int col=floor(x_dist/rcd);//列
 	int row=floor(y_dist/rcd);//行
-	//ROS_INFO("col:%d,row:%d",col,row);
 	for(int r=1;r<=row+1;r++)//行
 	{
 		for(int c=1;c<=col+1;c++)//列
@@ -91,7 +84,6 @@ void Walk_in_rectangle::rectangleCB(const walk_in_rectangle::Rectangle& rectangl
 						path_point.pose.position.y=-y_dist+(rcd/2);
 					}
 				}
-				//ROS_INFO("col:%d,row:%d,x:%.2f,y:%.2f",c,r,path_point.pose.position.x,path_point.pose.position.y);
 			}
 			else
 			{//为奇数行 1 3 5 正序压栈
@@ -108,7 +100,6 @@ void Walk_in_rectangle::rectangleCB(const walk_in_rectangle::Rectangle& rectangl
 						path_point.pose.position.y=-y_dist+(rcd/2);
 					}
 				}
-				//ROS_INFO("col:%d,row:%d,x:%.2f,y:%.2f",c,r,path_point.pose.position.x,path_point.pose.position.y);
 			}
 			path.poses.push_back(path_point);
 		}

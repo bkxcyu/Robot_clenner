@@ -29,37 +29,52 @@ private:
 	ros::Publisher rect_pub,marker_pub,map_pub;
     ros::Timer timer;
     void testpub_loopCB(const ros::TimerEvent&);
+	//This is the main loop,searching for the rectangles in the map and publish them
 	void spawm_loopCB(const ros::TimerEvent&);
 	ros::Subscriber map_sub;
 	void mapCB(const nav_msgs::OccupancyGrid& map);
+	//get Occupancy from map
 	int8_t get_Occupancy(const geometry_msgs::Point& position);
 	int8_t get_Occupancy(const geometry_msgs::Pose& pose);
 	int8_t get_Occupancy(const float& x,const float& y);
+	//set Occupancy to the map_(copy)
 	void set_Occupancy(const float& x,const float& y,const int8_t& ocpc_);
 	void set_Occupancy(const geometry_msgs::PoseArray& pose_array_,const int8_t& ocpc_);
 	void set_Occupancy(const walk_in_rectangle::Rectangle& rect_,const int8_t& ocpc_);
 	int get_index(const float& x_,const float& y_);
 	void init_marker();
 	void init_rectangle(const double& start_x_,const double& start_y_);
+	//visualization
 	visualization_msgs::Marker points, line_strip, goal_circle;
 	void draw_marker(const geometry_msgs::Point& position);
 	void draw_marker(const geometry_msgs::Pose& pose);
 	void draw_marker(const geometry_msgs::PoseArray& pose_array);
 	void draw_marker(const walk_in_rectangle::Rectangle& rect_);
+	//expand rectangle ince from the given position
 	geometry_msgs::PoseArray expand_rectangle();
+	//get points between two peaks
 	geometry_msgs::PoseArray get_poses_between_peaks(geometry_msgs::Pose& peak1,geometry_msgs::Pose& peak2);
+	//stash the rectangle that explored
 	void save_rect( const walk_in_rectangle::Rectangle& rect_buffer_);
 
+	//the peaks of a rectangle
 	geometry_msgs::Pose up_left_peak;
 	geometry_msgs::Pose up_right_peak;
 	geometry_msgs::Pose down_left_peak;
 	geometry_msgs::Pose down_right_peak;
+	///the edges of a rectangle
 	geometry_msgs::PoseArray edges;
+	//the gateway(unoccupied edge point)
 	geometry_msgs::PoseArray left_gateway,right_gateway,up_gateway,down_gateway;
+	//rectangles
 	geometry_msgs::PoseArray first_rect,second_rect,process_data_buffer;
+	//unoccupied edge point would become a seed,new rectangle grows from here
 	geometry_msgs::PoseArray seed_stack;//FIFO
+	//rectangle array
 	std::vector<walk_in_rectangle::Rectangle> rectangle_array;
 	walk_in_rectangle::Rectangle rect_buffer;
+
+	//flags
 	bool map_receive_flag=false;
 	bool scan_up_left=true;
 	bool scan_down_left=true;
@@ -72,9 +87,10 @@ private:
 	bool first_prepare_flag=true;
 	bool rect_expand_finish_flag=false;
 	bool occupied_flag=false;
+	//params
 	double step;
 	double seed_x,seed_y;
-
+	//status of the main loop
 	enum STATUS {PREPARE,PROCESS,DONE} status;
 };
 
@@ -393,26 +409,16 @@ void SPAWM_RECTANGLE::draw_marker(const walk_in_rectangle::Rectangle& rect_)
 }
 void SPAWM_RECTANGLE::testpub_loopCB(const ros::TimerEvent&)
 {
-    // geometry_msgs::Point test_point;//25*6
-	// for(int y=0;y<=60;y++)
-	// {
-	// 	for(int x=0;x<=250;x++)
-	// 	{
-	// 		test_point.x=1.0*x/10;
-	// 		test_point.y=1.0*y/10;
-	// 		get_Occupancy(test_point);
-	// 	}
-	// }
-	// points.points.clear();
+    // there is nothing
 }
 void SPAWM_RECTANGLE::spawm_loopCB(const ros::TimerEvent&)
-{
-	if(map_receive_flag)
+{//main loop
+	if(map_receive_flag)//make sure that the map is received
 	{
 		if(status==PREPARE)
 		{
 			if(first_prepare_flag)
-			{
+			{//init the first seed,first rectangle would grows from here
 				seed_x=start_pose_x;
 				seed_y=start_pose_y;
 				init_rectangle(seed_x,seed_y);
@@ -422,7 +428,7 @@ void SPAWM_RECTANGLE::spawm_loopCB(const ros::TimerEvent&)
 			}
 			else
 			{
-				//get rectangle
+				//save rectangle && publish it
 				save_rect(rect_buffer);
 				rect_pub.publish(rect_buffer);
 				//get edge && set edge occupied
@@ -472,28 +478,7 @@ void SPAWM_RECTANGLE::spawm_loopCB(const ros::TimerEvent&)
 		else if(status==DONE)
 		{
 			//do nothing
-		}
-
-		// if(first_rect.header.seq==0)//expanding
-		// 	first_rect=expand_rectangle(start_pose_x,start_pose_y);
-		// else if(first_rect.header.seq==1)//save first rectangle to rectangle_array
-		// {
-		// 	save_rect(first_rect);
-		// 	first_rect.header.seq=-1;
-		// }
-
-		// for(geometry_msgs::Pose each_edge_pose:first_rect.poses)
-		// {
-		// 	draw_marker(each_edge_pose);
-		// 	//second_rect
-		// 	if(second_rect.header.seq==0)//expanding
-		// 		second_rect=expand_rectangle(each_edge_pose.position.x,each_edge_pose.position.y);
-		// 	else if(second_rect.header.seq==1)//save first rectangle to rectangle_array
-		// 	{
-		// 		save_rect(second_rect);
-		// 		second_rect.header.seq=-1;
-		// 	}
-		// }					
+		}				
 	}
 }
 void SPAWM_RECTANGLE::save_rect(const walk_in_rectangle::Rectangle& rect_buffer_)

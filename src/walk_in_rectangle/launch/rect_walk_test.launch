@@ -5,7 +5,7 @@
     <!--机器人起始位置 /map-->
     <arg name="start_pose_x" default="2.0" />
     <arg name="start_pose_y" default="8.0" />
-    <!--搜索步长-->
+    <!--搜索步长(搜索步长=地图分辨率/机器人直径)-->
     <arg name="step" default="0.2" />
 
     <!--stage仿真环境加载-->
@@ -13,16 +13,16 @@
     <node name="rviz" pkg="rviz" type="rviz" args="-d $(find stage)/rviz/map.rviz"/>
     <node name="map_server" pkg="map_server" type="map_server" args="$(find stage)/maps/room.yaml"/>
     <node pkg="tf" type="static_transform_publisher" name="odom2map" args="0 0 0 0 0 0  /map /odom   10"/>
-    <!--在既定的矩形中规划路径-->
-    <node pkg="walk_in_rectangle" type="walk_in_rectangle_pub" name="wir_test" output="screen">
+    <!--订阅由spawm_rectangle发布的矩形 在矩形中规划路径-->
+    <node pkg="walk_in_rectangle" type="walk_in_rectangle_pub" name="walk_in_rectangle" output="screen">
         <param name="rcd" value="$(arg rcd)"/>
         <param name="start_pose_x" value="$(arg start_pose_x)"/>
         <param name="start_pose_y" value="$(arg start_pose_y)"/>
     </node>
     <!--发布测试矩形-->
     <!--<node pkg="walk_in_rectangle" type="rectangle_pub" name="rect_pub_test"/>-->
-    <!--矩形生长-->
-    <node pkg="spawm_rectangle" type="spawm_rectangle_pub" name="spawm_rectangle_test" >
+    <!--BFS矩形生长-->
+    <node pkg="spawm_rectangle" type="spawm_rectangle_pub" name="spawm_rectangle" >
         <param name="rcd" value="$(arg rcd)"/>
         <param name="start_pose_x" value="$(arg start_pose_x)"/>
         <param name="start_pose_y" value="$(arg start_pose_y)"/>

@@ -225,10 +225,3 @@ target_link_libraries(spawm_rectangle_pub
   ${catkin_LIBRARIES}
 )
 
-add_executable(spawm_rectangle_sub
-  src/spawm_rectangle_sub.cpp
-)
-add_dependencies(spawm_rectangle_sub ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(spawm_rectangle_sub
-  ${catkin_LIBRARIES}
-)
