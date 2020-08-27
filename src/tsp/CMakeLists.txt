@@ -36,6 +36,18 @@ find_package(catkin REQUIRED)
 ##   * add "message_generation" and every package in MSG_DEP_SET to
 find_package(catkin REQUIRED COMPONENTS
   roscpp
+  message_generation
+  geometry_msgs
+  cmake_modules
+  nav_core
+  nav_msgs
+  pluginlib
+  tf
+  tf_conversions
+  sensor_msgs
+  std_msgs
+  visualization_msgs
+  walk_in_rectangle
 )
 ##   * add "message_runtime" and every package in MSG_DEP_SET to
 ##     catkin_package(CATKIN_DEPENDS ...)
@@ -216,11 +228,20 @@ target_link_libraries(${PROJECT_NAME} Threads::Threads)
 # catkin_add_nosetests(test)
 
 
-# add_library(test
-#   include/tsp/test.h
-#   src/test.cpp
+
+
+# add_executable(test_pub
+#   src/test_pub.cpp
 # )
-# add_dependencies(test ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-# target_link_libraries(test
+# add_dependencies(test_pub ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# target_link_libraries(test_pub
+#   ${catkin_LIBRARIES}
+# )
+
+# add_executable(test_sub
+#   src/test_sub.cpp
+# )
+# add_dependencies(test_sub ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# target_link_libraries(test_sub
 #   ${catkin_LIBRARIES}
 # )

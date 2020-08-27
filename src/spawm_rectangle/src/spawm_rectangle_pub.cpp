@@ -26,7 +26,7 @@ private:
     ros::NodeHandle n;
 	nav_msgs::OccupancyGrid map_;
 
-	ros::Publisher rect_pub,marker_pub,map_pub;
+	ros::Publisher rect_pub,marker_pub,map_pub,center_pose_pub;
     ros::Timer timer;
     void testpub_loopCB(const ros::TimerEvent&);
 	//This is the main loop,searching for the rectangles in the map and publish them
@@ -107,6 +107,7 @@ SPAWM_RECTANGLE::SPAWM_RECTANGLE()
 
 	map_sub=n.subscribe("/map", 1, &SPAWM_RECTANGLE::mapCB, this);//nav_msgs/OccupancyGrid
 	map_pub=n.advertise<nav_msgs::OccupancyGrid>("/N_map",10);
+	center_pose_pub=n.advertise<geometry_msgs::PoseArray>("/center_pose_array",10);
 	rect_pub=n.advertise<walk_in_rectangle::Rectangle>("/rect_spawm",10);
 	marker_pub = n.advertise<visualization_msgs::Marker>("/Marker", 10);
 
@@ -363,7 +364,7 @@ void SPAWM_RECTANGLE::set_Occupancy( const walk_in_rectangle::Rectangle& rect_,c
 	int index_U_R=get_index(rect_.U_R.x,rect_.U_R.y);
 	int index_D_L=get_index(rect_.D_L.x,rect_.D_L.y);
 	int index_D_R=get_index(rect_.D_R.x,rect_.D_R.y);
-	ROS_INFO("%d %d %d %d",index_U_L,index_U_R,index_D_L,index_D_R);
+	//ROS_INFO("%d %d %d %d",index_U_L,index_U_R,index_D_L,index_D_R);
 
 	for(int i=0;i<=abs(index_U_R-index_D_R)/map_.info.width;i++)
 	{
@@ -429,8 +430,7 @@ void SPAWM_RECTANGLE::spawm_loopCB(const ros::TimerEvent&)
 			else
 			{
 				//save rectangle && publish it
-				save_rect(rect_buffer);
-				rect_pub.publish(rect_buffer);
+
 				//get edge && set edge occupied
 				set_Occupancy(rect_buffer,20);
 				//stash new seed list
@@ -460,6 +460,28 @@ void SPAWM_RECTANGLE::spawm_loopCB(const ros::TimerEvent&)
 						//set status to process
 						status=PROCESS;
 						occupied_flag=false;
+						
+				save_rect(rect_buffer);
+				rect_pub.publish(rect_buffer);
+
+			geometry_msgs::PoseArray center_points_array;
+			for(int i=0;i<rectangle_array.size();i++)
+			{
+				geometry_msgs::Pose center_pose;
+				if(rectangle_array[i].U_R.x-rectangle_array[i].U_L.x<rcd/2)
+					continue;
+				if(rectangle_array[i].U_R.y-rectangle_array[i].D_L.y<rcd/2)
+					continue;	
+				center_pose.position.x=(rectangle_array[i].U_L.x+rectangle_array[i].D_R.x)/2;
+				center_pose.position.y=(rectangle_array[i].U_L.y+rectangle_array[i].D_R.y)/2;
+				center_points_array.poses.push_back(center_pose);
+			}
+			//publish center points
+			center_pose_pub.publish(center_points_array);
+			//vistualization
+			points.points.clear();
+			draw_marker(center_points_array);
+
 					}
 				}
 			}
@@ -471,13 +493,37 @@ void SPAWM_RECTANGLE::spawm_loopCB(const ros::TimerEvent&)
 			//check if finished
 			if(rect_expand_finish_flag)
 			{
+				ROS_INFO("spawm once");
 				//set status to prepare
 				status=PREPARE;
 			}
 		}
 		else if(status==DONE)
 		{
-			//do nothing
+			ROS_INFO("calculate center points");
+			// calculate center points of rectangles
+			// --input:		rectangle_array
+			// --output:	center_points_array
+			geometry_msgs::PoseArray center_points_array;
+			for(int i=0;i<rectangle_array.size();i++)
+			{
+				geometry_msgs::Pose center_pose;
+				if(rectangle_array[i].U_R.x-rectangle_array[i].U_L.x<rcd)
+					continue;
+				if(rectangle_array[i].U_R.y-rectangle_array[i].D_L.y<rcd)
+					continue;	
+				center_pose.position.x=(rectangle_array[i].U_L.x+rectangle_array[i].D_R.x)/2;
+				center_pose.position.y=(rectangle_array[i].U_L.y+rectangle_array[i].D_R.y)/2;
+				center_points_array.poses.push_back(center_pose);
+			}
+			//publish center points
+			center_pose_pub.publish(center_points_array);
+			//vistualization
+			points.points.clear();
+			draw_marker(center_points_array);
+			ROS_INFO("\n--------------------------\n     spawm rectangle succeed \n--------------------------");
+			//stop timer
+			timer.stop();
 		}				
 	}
 }

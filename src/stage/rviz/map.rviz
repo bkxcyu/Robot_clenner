@@ -96,7 +96,7 @@ Visualization Manager:
       Buffer Length: 10000
       Class: rviz/Path
       Color: 25; 255; 0
-      Enabled: true
+      Enabled: false
       Head Diameter: 0.300000012
       Head Length: 0.200000003
       Length: 0.300000012
@@ -114,10 +114,10 @@ Visualization Manager:
       Shaft Length: 0.100000001
       Topic: /path
       Unreliable: false
-      Value: true
+      Value: false
     - Class: rviz/Marker
       Enabled: true
-      Marker Topic: /Marker
+      Marker Topic: /Marker1
       Name: Marker
       Namespaces:
         Markers: true
@@ -155,6 +155,14 @@ Visualization Manager:
                 base_laser_link:
                   {}
       Update Interval: 0
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /Marker
+      Name: Marker
+      Namespaces:
+        Markers: true
+      Queue Size: 100
       Value: true
   Enabled: true
   Global Options:
@@ -212,5 +220,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1327
-  X: 39
-  Y: 1104
+  X: 1405
+  Y: 308

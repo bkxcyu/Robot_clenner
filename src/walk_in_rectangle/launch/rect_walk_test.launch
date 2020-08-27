@@ -22,10 +22,13 @@
     <!--发布测试矩形-->
     <!--<node pkg="walk_in_rectangle" type="rectangle_pub" name="rect_pub_test"/>-->
     <!--BFS矩形生长-->
-    <node pkg="spawm_rectangle" type="spawm_rectangle_pub" name="spawm_rectangle" >
+    <node pkg="spawm_rectangle" type="spawm_rectangle_pub" name="spawm_rectangle" output="screen">
         <param name="rcd" value="$(arg rcd)"/>
         <param name="start_pose_x" value="$(arg start_pose_x)"/>
         <param name="start_pose_y" value="$(arg start_pose_y)"/>
         <param name="step" value="$(arg step)"/>
+    </node>
+    <!--tsp-->
+    <node pkg="tsp" type="tsp_node" name="tsp_node" output="screen">
     </node>
 </launch>

@@ -22,6 +22,15 @@
 #include <string>
 #include <stdio.h>
 #include <vector>
+//ros
+#include "ros/ros.h"
+#include <ros/types.h>
+#include <geometry_msgs/Twist.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/Pose.h>
+#include <geometry_msgs/PoseArray.h>
+#include <visualization_msgs/MarkerArray.h>
+#include <visualization_msgs/Marker.h>
 
 #include "twoOpt.h"
 
@@ -48,8 +57,8 @@ private:
 	// x and y coords of a node
 	struct City
 	{
-		int x;
-		int y;
+		float x;
+		float y;
 	};
 
 	// Filename supplied on command line to read from
@@ -68,12 +77,22 @@ private:
 
 	// Initialization function
 	void getNodeCount();
+	void getNodeCount(const geometry_msgs::PoseArray& center_array_);
 
 	// Find odd vertices in graph
 	void findOdds();
 
 	// Prim helper function
 	int minKey(int key[], bool mstSet[]);
+
+	//ros------------------------------------>
+	ros::NodeHandle n_;
+	geometry_msgs::PoseArray center_array;
+	//visualization
+	visualization_msgs::Marker points, line_strip, goal_circle;
+	void init_marker();
+	void draw_marker(const geometry_msgs::PoseArray& pose_array);
+	ros::Publisher marker_pub;
 
 
 protected:
@@ -112,6 +131,7 @@ public:
 
 	// Constructor
 	TSP(string in, string out);
+	TSP(const geometry_msgs::PoseArray& center_array_);
 
 	// Destructor
 	~TSP();
@@ -122,6 +142,7 @@ public:
 
 	// Initialization functions
 	void readCities();
+	void readCities(const geometry_msgs::PoseArray& center_array_);
 	void fillMatrix_threads();
 
 	// Find MST using Prim's algorithm
@@ -151,6 +172,7 @@ public:
 	void printCities();
 	void printAdjList();
 	void printResult();
+	void printResult(bool to_marker);
 	void printEuler();
 	void printPath();
 

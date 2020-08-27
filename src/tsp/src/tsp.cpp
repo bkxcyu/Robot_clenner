@@ -35,7 +35,38 @@ TSP::TSP(string in, string out){
 	// Adjacency lsit
 	adjlist = new vector<int> [n];
 };
+TSP::TSP(const geometry_msgs::PoseArray& center_array_){
+	/////////////////////////////////////////////////////
+	// Constructor
+	/////////////////////////////////////////////////////
 
+	// set n to number of lines read from input file
+	center_array=center_array_;
+	getNodeCount(center_array_);
+
+	// Allocate memory
+	graph = new int*[n];
+	for (int i = 0; i < n; i++) {
+		graph[i] = new int[n];
+		for (int j = 0; j < n; j++) graph[i][j] = 0;
+	}
+
+	cost = new int*[n];
+	for (int i = 0; i < n; i++) {
+		cost[i] = new int[n];
+	}
+
+	path_vals = new int*[n];
+	for (int i = 0; i < n; i++) {
+		path_vals[i] = new int[n];
+	}
+
+	// Adjacency lsit
+	adjlist = new vector<int> [n];
+	//vistualization
+	marker_pub = n_.advertise<visualization_msgs::Marker>("/Marker1", 10);
+	init_marker();
+};
 TSP::~TSP(){
 	/////////////////////////////////////////////////////
 	// Destructor
@@ -51,7 +82,53 @@ TSP::~TSP(){
 	delete [] cost;
 	delete [] adjlist;
 }
+void TSP::init_marker()
+{
+	points.header.frame_id = line_strip.header.frame_id = goal_circle.header.frame_id = "map";
+	points.ns = line_strip.ns = goal_circle.ns = "Markers";
+	points.action = line_strip.action = goal_circle.action = visualization_msgs::Marker::ADD;
+	points.pose.orientation.w = line_strip.pose.orientation.w = goal_circle.pose.orientation.w = 1.0;
+	points.id = 0;
+	line_strip.id = 1;
+	goal_circle.id = 2;
 
+	points.type = visualization_msgs::Marker::POINTS;
+	line_strip.type = visualization_msgs::Marker::LINE_STRIP;
+	goal_circle.type = visualization_msgs::Marker::CYLINDER;
+	// POINTS markers use x and y scale for width/height respectively
+	points.scale.x = 0.1;
+	points.scale.y = 0.1;
+
+	//LINE_STRIP markers use only the x component of scale, for the line width
+	line_strip.scale.x = 0.1;
+
+	goal_circle.scale.x = 0.3;
+	goal_circle.scale.y = 0.3;
+	goal_circle.scale.z = 0.1;
+
+	// Points are green
+	points.color.g = 1.0f;
+	points.color.a = 1.0;
+
+	// Line strip is blue
+	line_strip.color.b = 0.5;
+	line_strip.color.a = 1.0;
+
+	//goal_circle is yellow
+	goal_circle.color.r = 1.0;
+	goal_circle.color.g = 1.0;
+	goal_circle.color.b = 0.0;
+	goal_circle.color.a = 0.5;
+}
+void TSP::draw_marker(const geometry_msgs::PoseArray& pose_array)
+{
+	points.points.clear();
+	for(int i=0;i<circuit.size();i++)
+	{
+	 	line_strip.points.push_back(pose_array.poses[circuit[i]].position);
+	}
+	marker_pub.publish(line_strip);
+}
 void TSP::getNodeCount(){
 	int count = 0;
 	ifstream inStream;
@@ -66,6 +143,9 @@ void TSP::getNodeCount(){
 	   ++count;
 	n = count;
 	inStream.close();
+};
+void TSP::getNodeCount(const geometry_msgs::PoseArray& center_array_){
+	n = center_array_.poses.size();
 };
 
 void TSP::readCities(){
@@ -90,6 +170,18 @@ void TSP::readCities(){
 	}
 	inStream.close();
 };
+
+void TSP::readCities(const geometry_msgs::PoseArray& center_array_){
+	/////////////////////////////////////////////////////
+	int c;
+	for(int i=0;i<center_array_.poses.size();i++)
+	{	
+		i>>c;
+		struct City c = {center_array_.poses[i].position.x, center_array_.poses[i].position.y};
+		cities.push_back(c);
+	}
+};
+
 
 int TSP::get_distance(struct TSP::City c1, struct TSP::City c2) {
 	/////////////////////////////////////////////////////
@@ -441,6 +533,10 @@ void TSP::printResult(){
 	}
 	//outputStream << *(circuit.end()-1);
 	outputStream.close();
+
+};
+void TSP::printResult(bool to_marker){
+	draw_marker(center_array);
 };
 
 void TSP::printPath(){
