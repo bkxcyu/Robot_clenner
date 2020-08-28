@@ -7,7 +7,7 @@ Panels:
         - /Global Options1
         - /Status1
         - /Path1
-        - /Marker1
+        - /NavPath1
       Splitter Ratio: 0.5
     Tree Height: 531
   - Class: rviz/Selection
@@ -95,8 +95,8 @@ Visualization Manager:
     - Alpha: 1
       Buffer Length: 10000
       Class: rviz/Path
-      Color: 25; 255; 0
-      Enabled: false
+      Color: 170; 170; 255
+      Enabled: true
       Head Diameter: 0.300000012
       Head Length: 0.200000003
       Length: 0.300000012
@@ -114,13 +114,21 @@ Visualization Manager:
       Shaft Length: 0.100000001
       Topic: /path
       Unreliable: false
-      Value: false
+      Value: true
     - Class: rviz/Marker
       Enabled: true
-      Marker Topic: /Marker1
+      Marker Topic: /Marker
       Name: Marker
       Namespaces:
         Markers: true
+      Queue Size: 100
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /Marker1
+      Name: Marker1
+      Namespaces:
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/TF
@@ -156,13 +164,43 @@ Visualization Manager:
                   {}
       Update Interval: 0
       Value: true
-    - Class: rviz/Marker
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 25; 255; 0
       Enabled: true
-      Marker Topic: /Marker
-      Name: Marker
-      Namespaces:
-        Markers: true
-      Queue Size: 100
+      Head Diameter: 0.300000012
+      Head Length: 0.200000003
+      Length: 0.300000012
+      Line Style: Billboards
+      Line Width: 0.0500000007
+      Name: NavPath
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.0299999993
+      Shaft Diameter: 0.100000001
+      Shaft Length: 0.100000001
+      Topic: /move_base/NavfnROS/plan
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Axes Length: 1
+      Axes Radius: 0.100000001
+      Class: rviz/Pose
+      Color: 255; 25; 0
+      Enabled: true
+      Head Length: 0.300000012
+      Head Radius: 0.100000001
+      Name: NavGoal
+      Shaft Length: 1
+      Shaft Radius: 0.0500000007
+      Shape: Arrow
+      Topic: /move_base/current_goal
+      Unreliable: false
       Value: true
   Enabled: true
   Global Options:
@@ -188,7 +226,7 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Angle: -9.46223736e-07
+      Angle: -0.00500094611
       Class: rviz/TopDownOrtho
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.0599999987
@@ -220,5 +258,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1327
-  X: 1405
-  Y: 308
+  X: 39
+  Y: 24

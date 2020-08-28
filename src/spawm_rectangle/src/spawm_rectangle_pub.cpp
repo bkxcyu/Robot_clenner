@@ -464,23 +464,23 @@ void SPAWM_RECTANGLE::spawm_loopCB(const ros::TimerEvent&)
 				save_rect(rect_buffer);
 				rect_pub.publish(rect_buffer);
 
-			geometry_msgs::PoseArray center_points_array;
-			for(int i=0;i<rectangle_array.size();i++)
-			{
-				geometry_msgs::Pose center_pose;
-				if(rectangle_array[i].U_R.x-rectangle_array[i].U_L.x<rcd/2)
-					continue;
-				if(rectangle_array[i].U_R.y-rectangle_array[i].D_L.y<rcd/2)
-					continue;	
-				center_pose.position.x=(rectangle_array[i].U_L.x+rectangle_array[i].D_R.x)/2;
-				center_pose.position.y=(rectangle_array[i].U_L.y+rectangle_array[i].D_R.y)/2;
-				center_points_array.poses.push_back(center_pose);
-			}
-			//publish center points
-			center_pose_pub.publish(center_points_array);
-			//vistualization
-			points.points.clear();
-			draw_marker(center_points_array);
+			// geometry_msgs::PoseArray center_points_array;
+			// for(int i=0;i<rectangle_array.size();i++)
+			// {
+			// 	geometry_msgs::Pose center_pose;
+			// 	if(rectangle_array[i].U_R.x-rectangle_array[i].U_L.x<rcd/2)
+			// 		continue;
+			// 	if(rectangle_array[i].U_R.y-rectangle_array[i].D_L.y<rcd/2)
+			// 		continue;	
+			// 	center_pose.position.x=(rectangle_array[i].U_L.x+rectangle_array[i].D_R.x)/2;
+			// 	center_pose.position.y=(rectangle_array[i].U_L.y+rectangle_array[i].D_R.y)/2;
+			// 	center_points_array.poses.push_back(center_pose);
+			// }
+			// //publish center points
+			// center_pose_pub.publish(center_points_array);
+			// //vistualization
+			// points.points.clear();
+			// draw_marker(center_points_array);
 
 					}
 				}

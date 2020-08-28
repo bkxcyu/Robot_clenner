@@ -31,6 +31,10 @@
 #include <geometry_msgs/PoseArray.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <visualization_msgs/Marker.h>
+#include <nav_msgs/Odometry.h>
+#include <nav_msgs/OccupancyGrid.h>
+#include <navfn/MakeNavPlan.h>
+#include <nav_msgs/GetPlan.h>
 
 #include "twoOpt.h"
 
@@ -93,6 +97,8 @@ private:
 	void init_marker();
 	void draw_marker(const geometry_msgs::PoseArray& pose_array);
 	ros::Publisher marker_pub;
+	//path plan
+	ros::ServiceClient path_plan_client;
 
 
 protected:

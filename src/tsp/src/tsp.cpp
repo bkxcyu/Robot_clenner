@@ -66,6 +66,8 @@ TSP::TSP(const geometry_msgs::PoseArray& center_array_){
 	//vistualization
 	marker_pub = n_.advertise<visualization_msgs::Marker>("/Marker1", 10);
 	init_marker();
+	//path plan
+	path_plan_client = n_.serviceClient<nav_msgs::GetPlan>("/move_base/make_plan");
 };
 TSP::~TSP(){
 	/////////////////////////////////////////////////////
@@ -187,9 +189,43 @@ int TSP::get_distance(struct TSP::City c1, struct TSP::City c2) {
 	/////////////////////////////////////////////////////
 	// Calculate distance between c1 and c2
 	/////////////////////////////////////////////////////
-	int dx = pow((float)(c1.x - c2.x), 2);
-	int dy = pow((float)(c1.y - c2.y), 2);
-	return (floor((float) (sqrt(dx + dy)) + 0.5));
+	// int dx = pow((float)(c1.x - c2.x), 2);
+	// int dy = pow((float)(c1.y - c2.y), 2);
+	// return (floor((float) (sqrt(dx + dy)) + 0.5));
+	nav_msgs::GetPlan srv;
+	geometry_msgs::PoseStamped pose_s_;
+
+	pose_s_.header.stamp=ros::Time::now();
+	pose_s_.header.frame_id="map";
+	pose_s_.pose.position.x=c1.x;
+	pose_s_.pose.position.y=c1.y;
+
+	srv.request.start=pose_s_;
+
+	pose_s_.header.stamp=ros::Time::now();
+	pose_s_.header.frame_id="map";
+	pose_s_.pose.position.x=c2.x;
+	pose_s_.pose.position.y=c2.y;
+
+	srv.request.goal=pose_s_;
+
+	if(path_plan_client.call(srv))
+	{
+		// ROS_INFO("--------------");
+		// ROS_INFO("call path plan");
+		// ROS_INFO("--------------");
+		while(srv.response.plan.poses.size()==0)
+			ROS_INFO("waiting for path...");
+		return srv.response.plan.poses.size();
+	}
+	else
+	{
+		ROS_WARN("caltulate distance..");
+		int dx = pow((float)(c1.x - c2.x), 2);
+		int dy = pow((float)(c1.y - c2.y), 2);
+		return (floor((float) (sqrt(dx + dy)) + 0.5));
+	}
+
 };
 
 void *F(void* args){
